@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: backend
+    env: rust
+    buildCommand: cargo build --release
+    startCommand: cargo build --release
+    plan: free
+
+  - type: web
+    name: app
+    env: static
+    staticPublishPath: ./dist
