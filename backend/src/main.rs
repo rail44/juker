@@ -18,6 +18,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/status", get(status))
+        .route("/command", get(command))
         .route("/command", post(command));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     axum::Server::bind(&addr)
@@ -86,15 +87,19 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
 
     println!("{trigger_id}");
     println!("{view}");
+    let mut config = slack::apis::configuration::Configuration::default();
+    config.oauth_access_token = Some(token.clone());
 
-    slack::apis::views_api::views_open(
-        &slack::apis::configuration::Configuration::default(),
+    if let Err(e) = slack::apis::views_api::views_open(
+        &config,
         &token,
         trigger_id,
         &view,
     )
-    .await
-    .unwrap();
+    .await {
+        println!("{:?}", e);
+    }
+
 
     StatusCode::OK
 }
