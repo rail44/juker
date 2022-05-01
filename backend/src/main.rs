@@ -41,12 +41,49 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
         "type": "modal",
         "title": {
             "type": "plain_text",
-            "text": "Juker"
+            "text": "Juker",
+            "emoji": true
         },
-        "blocks": [],
+        "submit": {
+            "type": "plain_text",
+            "text": "Submit",
+            "emoji": true
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Cancel",
+            "emoji": true
+        },
+        "blocks": [
+            {
+                "type": "input",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "plain_text_input-acton"
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Youtube URL",
+                    "emoji": true
+                }
+            },
+            {
+                "type": "input",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "plain_text_input-action"
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "ここすき",
+                    "emoji": true
+                }
+            }
+        ]
     })
     .to_string();
     let trigger_id = &req.trigger_id;
+
     println!("{trigger_id}");
     println!("{view}");
 
