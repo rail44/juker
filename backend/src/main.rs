@@ -1,20 +1,27 @@
-use hyper::Server;
+use axum::{
+    routing::{get, post},
+    Router,
+    response::IntoResponse,
+    http::StatusCode,
+};
 use std::net::SocketAddr;
-use tower_http::services::ServeDir;
-use tower::make::Shared;
 
 #[tokio::main]
 async fn main() {
-    // tokio::spawn(async {
-    //     let addr = SocketAddr::from(([127, 0, 0, 1], 8888));
-    //     let socket = TcpListener::bind(&addr).await.unwrap();
-    //     while let Ok((stream, _)) = socket.accept().await {
-    //         tokio_tungstenite::accept_async(stream).await.unwrap();
-    //     }
-    // });
+    let app = Router::new()
+        .route("/status", get(status))
+        .route("/command", post(create_user));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
 
-    let svc = Shared::new(ServeDir::new("src"));
+async fn status() -> &'static str {
+    "ok"
+}
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-    Server::bind(&addr).serve(svc).await.unwrap();
+async fn create_user() -> impl IntoResponse {
+    (StatusCode::CREATED, "")
 }
