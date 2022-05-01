@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    extract::Form,
+    extract::{Json, Form},
     Router,
 };
 use serde_json::json;
@@ -18,8 +18,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/status", get(status))
-        .route("/command", get(command))
-        .route("/command", post(command));
+        .route("/command", post(command))
+        .route("/interactive", post(interactive));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -45,6 +45,7 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
             "text": "Juker",
             "emoji": true
         },
+        "callback_id": "identify_your_modals",
         "submit": {
             "type": "plain_text",
             "text": "Submit",
@@ -101,5 +102,13 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
     }
 
 
+    StatusCode::OK
+}
+
+#[derive(Deserialize)]
+struct InteractiveRequest {
+}
+
+async fn interactive(Json(req): Json<InteractiveRequest>) -> impl IntoResponse {
     StatusCode::OK
 }
