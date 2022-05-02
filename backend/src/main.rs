@@ -19,6 +19,7 @@ async fn main() {
     let app = Router::new()
         .route("/status", get(status))
         .route("/command", post(command))
+        .route("/command", get(command))
         .route("/interactive", post(interactive));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     axum::Server::bind(&addr)
