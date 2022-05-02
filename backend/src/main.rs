@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    extract::{Json, Form},
+    extract::Form,
     Router,
 };
 use serde_json::json;
@@ -106,9 +106,10 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
 
 #[derive(Deserialize)]
 struct InteractiveRequest {
+    payload: String
 }
 
-async fn interactive(Json(req): Json<serde_json::Value>) -> impl IntoResponse {
-    tracing::info!("{}", req);
+async fn interactive(req: Form<InteractiveRequest>) -> impl IntoResponse {
+    tracing::info!("{}", req.payload);
     StatusCode::OK
 }
