@@ -7,37 +7,12 @@ use axum::{
 };
 use serde_json::json;
 use serde::Deserialize;
-use slack;
+use reqwest;
 use std::env;
 use std::net::SocketAddr;
 use tracing_subscriber;
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let app = Router::new()
-        .route("/status", get(status))
-        .route("/command", post(command))
-        .route("/command", get(command))
-        .route("/interactive", post(interactive));
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
-}
-
-async fn status() -> &'static str {
-    "ok"
-}
-
-#[derive(Deserialize)]
-struct CommandRequest {
-    trigger_id: String
-}
-
-async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
+async fn slack_view_open(trigger_id: &str) {
     let token = env::var("SLACK_TOKEN").unwrap();
     let view = json!({
         "type": "modal",
@@ -83,25 +58,48 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
                 }
             }
         ]
-    })
-    .to_string();
-    let trigger_id = &req.trigger_id;
+    });
+    let client = reqwest::Client::new();
+    let res = client.post("https://slack.com/api/views.open")
+        .bearer_auth(token.clone())
+        .json(&json!({
+            "token": token,
+            "trigger_id": trigger_id,
+            "view": view,
+        }))
+        .send()
+        .await
+        .unwrap();
+    tracing::info!("{}", res.text().await.unwrap());
+}
 
-    println!("{trigger_id}");
-    println!("{view}");
-    let mut config = slack::apis::configuration::Configuration::default();
-    config.oauth_access_token = Some(token.clone());
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
 
-    if let Err(e) = slack::apis::views_api::views_open(
-        &config,
-        &token,
-        trigger_id,
-        &view,
-    )
-    .await {
-        println!("{:?}", e);
-    }
+    let app = Router::new()
+        .route("/status", get(status))
+        .route("/command", post(command))
+        .route("/command", get(command))
+        .route("/interactive", post(interactive));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
 
+async fn status() -> &'static str {
+    "ok"
+}
+
+#[derive(Deserialize)]
+struct CommandRequest {
+    trigger_id: String
+}
+
+async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
+    slack_view_open(&req.trigger_id).await;
 
     StatusCode::OK
 }
