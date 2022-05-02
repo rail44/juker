@@ -108,6 +108,7 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
 struct InteractiveRequest {
 }
 
-async fn interactive(Json(req): Json<InteractiveRequest>) -> impl IntoResponse {
+async fn interactive(Json(req): Json<serde_json::Value>) -> impl IntoResponse {
+    tracing::info!("{}", req);
     StatusCode::OK
 }
