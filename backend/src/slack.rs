@@ -30,7 +30,7 @@ pub async fn view_open(trigger_id: &str) {
                 "block_id": "url",
                 "element": {
                     "type": "plain_text_input",
-                    "action_id": "text"
+                    "action_id": "input"
                 },
                 "label": {
                     "type": "plain_text",
@@ -44,7 +44,7 @@ pub async fn view_open(trigger_id: &str) {
                 "optional": true,
                 "element": {
                     "type": "plain_text_input",
-                    "action_id": "text"
+                    "action_id": "input"
                 },
                 "label": {
                     "type": "plain_text",
@@ -81,19 +81,19 @@ pub struct InteractiveUserPayload {
 }
 
 #[derive(Deserialize)]
-pub struct InteractiveTextInputPayload {
-    pub text: InteractiveTextValuePayload,
+pub struct InteractiveInputPayload<T> {
+    pub input: InteractiveValuePayload<T>,
 }
 
 #[derive(Deserialize)]
-pub struct InteractiveTextValuePayload {
-    pub value: String,
+pub struct InteractiveValuePayload<T> {
+    pub value: T,
 }
 
 #[derive(Deserialize)]
 pub struct InteractiveValuesPayload {
-    pub url: InteractiveTextInputPayload,
-    pub like: InteractiveTextInputPayload,
+    pub url: InteractiveInputPayload<String>,
+    pub like: InteractiveInputPayload<Option<String>>,
 }
 
 #[derive(Deserialize)]

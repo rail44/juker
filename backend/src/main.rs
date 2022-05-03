@@ -20,25 +20,19 @@ mod slack;
 struct VideoRequest {
     author: String,
     id: String,
-    like: String,
+    like: Option<String>,
 }
 
 impl VideoRequest {
-    fn new(author: String, id: String, like: String) -> Self {
+    fn new(author: String, id: String, like: Option<String>) -> Self {
         VideoRequest { author, id, like }
     }
 }
 
+#[derive(Default)]
 struct State {
+    pointer: usize,
     queue: Arc<RwLock<Vec<VideoRequest>>>,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State {
-            queue: Arc::new(RwLock::new(Vec::new())),
-        }
-    }
 }
 
 #[tokio::main]
@@ -50,7 +44,6 @@ async fn main() {
     let app = Router::new()
         .route("/status", get(status))
         .route("/command", post(command))
-        .route("/command", get(command))
         .route("/interactive", post(interactive))
         .layer(
             TraceLayer::new_for_http()
@@ -86,10 +79,10 @@ async fn interactive(
     req: Form<slack::InteractiveRequest>,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
-    tracing::info!("{:?}", req.payload);
+    tracing::info!("{}", req.payload);
 
     let payload: slack::InteractivePayload = serde_json::from_str(&req.payload).unwrap();
-    let url = Url::parse(&payload.view.state.values.url.text.value).unwrap();
+    let url = Url::parse(&payload.view.state.values.url.input.value).unwrap();
     let id = url
         .query_pairs()
         .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
@@ -98,7 +91,7 @@ async fn interactive(
     let vid_req = VideoRequest::new(
         payload.user.username,
         id.to_string(),
-        payload.view.state.values.like.text.value,
+        payload.view.state.values.like.input.value,
     );
     state.queue.write().unwrap().push(vid_req.clone());
     tracing::info!("{:?}", vid_req);
