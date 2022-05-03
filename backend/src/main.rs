@@ -1,17 +1,16 @@
 use axum::{
     extract::{Extension, Form},
-    http::StatusCode,
-    response::IntoResponse,
+    http::{Request, StatusCode},
+    response::{Response, IntoResponse},
     routing::{get, post},
     Router,
 };
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
-use tower_http::trace::{
-    DefaultOnEos, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer,
-};
-use tracing::Level;
+use std::time::Duration;
+use tower_http::trace::TraceLayer;
+use tracing::Span;
 use tracing_subscriber;
 use url::Url;
 
@@ -55,10 +54,8 @@ async fn main() {
         .route("/interactive", post(interactive))
         .layer(
             TraceLayer::new_for_http()
-                .on_request(DefaultOnRequest::new().level(Level::INFO))
-                .on_response(DefaultOnResponse::new().level(Level::INFO))
-                .on_failure(DefaultOnFailure::new().level(Level::INFO))
-                .on_eos(DefaultOnEos::new().level(Level::INFO)),
+                .on_request(|req: &Request<_>, _: &Span| tracing::info!("{:?}", req))
+                .on_response(|res: &Response<_>, _: Duration, _: &Span| tracing::info!("{:?}", res))
         )
         .layer(Extension(state));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
