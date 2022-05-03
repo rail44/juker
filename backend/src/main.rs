@@ -1,18 +1,20 @@
 use axum::{
+    extract::ws,
+    extract::ws::{WebSocket, WebSocketUpgrade},
     extract::{Extension, Form, Json},
     http::{Request, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
-use serde::{Serialize, Deserialize, Serializer};
+use chrono::Utc;
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
-use tracing_subscriber;
 use url::Url;
 
 mod slack;
@@ -30,18 +32,34 @@ impl VideoRequest {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct State {
-    pointer: usize,
+    pointer: RwLock<usize>,
+    begin: RwLock<i64>,
     queue: RwLock<Vec<VideoRequest>>,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            begin: RwLock::new(Utc::now().timestamp()),
+            pointer: Default::default(),
+            queue: Default::default(),
+        }
+    }
+}
+
 impl Serialize for State {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         json!({
             "pointer": self.pointer,
             "queue": self.queue.read().unwrap().clone(),
-        }).serialize(serializer)
+            "duration": Utc::now().timestamp() - *self.begin.read().unwrap(),
+        })
+        .serialize(serializer)
     }
 }
 
@@ -51,7 +69,16 @@ async fn main() {
 
     let initial_state = State::default();
 
-    initial_state.queue.write().unwrap().push(VideoRequest::new("rail44".into(), "AlXGFHExSL4".into(), Some("ここすき".into())));
+    initial_state.queue.write().unwrap().push(VideoRequest::new(
+        "rail44".into(),
+        "AlXGFHExSL4".into(),
+        Some("ここすき".into()),
+    ));
+    initial_state.queue.write().unwrap().push(VideoRequest::new(
+        "rail44".into(),
+        "mM7txmeCMRw".into(),
+        Some("ここすき".into()),
+    ));
 
     let app = Router::new()
         .route("/state", get(state))
@@ -59,6 +86,7 @@ async fn main() {
         .route("/command", post(command))
         .route("/interactive", post(interactive))
         .route("/request", post(request))
+        .route("/socket", get(socket_upgrade))
         .layer(
             TraceLayer::new_for_http()
                 .on_request(|req: &Request<_>, _: &Span| tracing::info!("{:?}", req))
@@ -121,8 +149,43 @@ async fn request(
     StatusCode::OK
 }
 
-async fn state(
+async fn state(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
+    (StatusCode::OK, Json(state))
+}
+
+async fn socket_upgrade(
+    ws: WebSocketUpgrade,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
-    (StatusCode::OK, Json(state))
+    ws.on_upgrade(|socket| socket_handler(socket, state))
+}
+
+async fn socket_handler(mut socket: WebSocket, state: Arc<State>) {
+    socket
+        .send(ws::Message::Text(serde_json::to_string(&state).unwrap()))
+        .await
+        .unwrap();
+
+    while let Some(msg) = socket.recv().await {
+        let body = msg.unwrap().into_text().unwrap();
+        if body == "ping" {
+            socket
+                .send(ws::Message::Text(serde_json::to_string(&state).unwrap()))
+                .await
+                .unwrap();
+        }
+
+        if body == "feed" {
+            {
+                let mut pointer = state.pointer.write().unwrap();
+                let mut begin = state.begin.write().unwrap();
+                *pointer += 1;
+                *begin = Utc::now().timestamp();
+            }
+            socket
+                .send(ws::Message::Text(serde_json::to_string(&state).unwrap()))
+                .await
+                .unwrap();
+        }
+    }
 }

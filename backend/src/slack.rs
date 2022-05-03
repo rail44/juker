@@ -1,4 +1,3 @@
-use reqwest;
 use reqwest::header::ACCEPT_CHARSET;
 use serde::Deserialize;
 use serde_json::json;

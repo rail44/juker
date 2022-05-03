@@ -3,12 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="https://www.youtube.com/iframe_api" await></script>
+    <script>
+        window.jukerYtLoadingPromise = new Promise((resolve) => {
+            window.onYouTubeIframeAPIReady = () => {
+                resolve();
+            }
+        });
+    </script>
+    <script src="https://www.youtube.com/iframe_api" async></script>
     <title>Juker</title>
   </head>
   <body>
     <div id="root"></div>
 
-    <script src="./src/index.tsx" type="module"></script>
+    <script src="./src/index.tsx" type="module" async></script>
   </body>
 </html>
