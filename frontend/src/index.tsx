@@ -1,7 +1,7 @@
 /* @refresh reload */
 import { render } from "solid-js/web";
 import type { Component } from "solid-js";
-import { createSignal, onMount, For } from "solid-js";
+import { createSignal, onMount, createDeferred, For } from "solid-js";
 import { v4 as uuidv4 } from "uuid";
 
 import "./index.css";
@@ -12,20 +12,25 @@ declare global {
   var YT: any;
 }
 
+const API_HOST = "http://localhost:8080/";
+
 const Player: Component<{ videoId: string }> = ({ videoId }) => {
+  const uuid = uuidv4();
   onMount(() => {
-    const player = new YT.Player("player", {
+    const player = new YT.Player(uuid, {
       height: "360",
       width: "640",
       videoId,
       events: {
-        onReady: () => {},
+        onReady: () => {
+          player.playVideo();
+        },
         onStateChange: () => {},
       },
     });
   });
 
-  return <div id={}></iframe>;
+  return <div id={uuid}></div>;
 };
 
 const App: Component = () => {
