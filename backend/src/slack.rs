@@ -102,7 +102,12 @@ pub struct InteractiveStatePayload {
 }
 
 #[derive(Deserialize)]
+pub struct InteractiveViewPayload {
+    pub state: InteractiveStatePayload,
+}
+
+#[derive(Deserialize)]
 pub struct InteractivePayload {
     pub user: InteractiveUserPayload,
-    pub state: InteractiveStatePayload,
+    pub view: InteractiveViewPayload,
 }

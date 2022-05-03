@@ -86,17 +86,19 @@ async fn interactive(
     req: Form<slack::InteractiveRequest>,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
+    tracing::info!("{:?}", req.payload);
+
     let payload: slack::InteractivePayload = serde_json::from_str(&req.payload).unwrap();
-    let url = Url::parse(&payload.state.values.url.text.value).unwrap();
+    let url = Url::parse(&payload.view.state.values.url.text.value).unwrap();
     let id = url
         .query_pairs()
         .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
         .unwrap();
 
     let vid_req = VideoRequest::new(
-        payload.user.username.to_string(),
+        payload.user.username,
         id.to_string(),
-        payload.state.values.like.text.value.to_string(),
+        payload.view.state.values.like.text.value,
     );
     state.queue.write().unwrap().push(vid_req.clone());
     tracing::info!("{:?}", vid_req);
