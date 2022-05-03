@@ -58,7 +58,7 @@ pub async fn view_open(trigger_id: &str) {
     let res = client
         .post("https://slack.com/api/views.open")
         .bearer_auth(token.clone())
-        .header(CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(CONTENT_TYPE, "application/json; charset=UTF-8")
         .json(&json!({
             "token": token,
             "trigger_id": trigger_id,
@@ -72,7 +72,7 @@ pub async fn view_open(trigger_id: &str) {
 
 #[derive(Deserialize)]
 pub struct InteractiveRequest {
-    pub payload: InteractivePayload,
+    pub payload: String,
 }
 
 #[derive(Deserialize)]

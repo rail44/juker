@@ -1,7 +1,7 @@
 use axum::{
     extract::{Extension, Form},
     http::{Request, StatusCode},
-    response::{Response, IntoResponse},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
@@ -55,7 +55,9 @@ async fn main() {
         .layer(
             TraceLayer::new_for_http()
                 .on_request(|req: &Request<_>, _: &Span| tracing::info!("{:?}", req))
-                .on_response(|res: &Response<_>, _: Duration, _: &Span| tracing::info!("{:?}", res))
+                .on_response(|res: &Response<_>, _: Duration, _: &Span| {
+                    tracing::info!("{:?}", res)
+                }),
         )
         .layer(Extension(state));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
@@ -84,16 +86,17 @@ async fn interactive(
     req: Form<slack::InteractiveRequest>,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
-    let url = Url::parse(&req.payload.state.values.url.text.value).unwrap();
+    let payload: slack::InteractivePayload = serde_json::from_str(&req.payload).unwrap();
+    let url = Url::parse(&payload.state.values.url.text.value).unwrap();
     let id = url
         .query_pairs()
         .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
         .unwrap();
 
     let vid_req = VideoRequest::new(
-        req.payload.user.username.to_string(),
+        payload.user.username.to_string(),
         id.to_string(),
-        req.payload.state.values.like.text.value.to_string(),
+        payload.state.values.like.text.value.to_string(),
     );
     state.queue.write().unwrap().push(vid_req.clone());
     tracing::info!("{:?}", vid_req);
