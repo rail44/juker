@@ -161,11 +161,6 @@ async fn socket_upgrade(
 }
 
 async fn socket_handler(mut socket: WebSocket, state: Arc<State>) {
-    socket
-        .send(ws::Message::Text(serde_json::to_string(&state).unwrap()))
-        .await
-        .unwrap();
-
     while let Some(msg) = socket.recv().await {
         let body = msg.unwrap().into_text().unwrap();
         if body == "ping" {

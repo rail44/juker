@@ -1,16 +1,7 @@
 /* @refresh reload */
 import { render } from "solid-js/web";
 import type { Component } from "solid-js";
-import {
-  createSignal,
-  onMount,
-  createResource,
-  createEffect,
-  useTransition,
-  createMemo,
-  Show,
-  Suspense,
-} from "solid-js";
+import { createSignal, onMount, createEffect, Show, Suspense } from "solid-js";
 import { v4 as uuidv4 } from "uuid";
 
 import "./index.css";
@@ -40,6 +31,7 @@ const Player: Component<{
           setReady(true);
         },
         onStateChange: (ev: any) => {
+          console.log(ev.data);
           if (ev.data === 1) {
             props.socket.send("ping");
           }
@@ -87,16 +79,21 @@ const App: Component<{ socket: WebSocket }> = (props) => {
   const [videoId, setVideoId] = createSignal("");
   const [duration, setDuration] = createSignal(0);
 
-  props.socket.addEventListener("message", (event) => {
-    const message: SocketMessage = JSON.parse(event.data);
-    const req = message.queue[message.pointer];
-    if (!req) {
-      return;
-    }
+  onMount(() => {
+    props.socket.addEventListener("message", (event) => {
+      console.log(event);
+      const message: SocketMessage = JSON.parse(event.data);
+      const req = message.queue[message.pointer];
+      if (!req) {
+        return;
+      }
 
-    setVideoId(req.id);
-    setDuration(message.duration);
-    setInitialized(true);
+      setVideoId(req.id);
+      setDuration(message.duration);
+      setInitialized(true);
+    });
+
+    props.socket.send("ping");
   });
 
   return (
@@ -113,8 +110,9 @@ const App: Component<{ socket: WebSocket }> = (props) => {
 };
 
 const socket = new WebSocket(`ws://${API_HOST}/socket`);
-
+await new Promise((resolve) => socket.addEventListener("open", resolve));
 await window.jukerYtLoadingPromise;
+
 render(
   () => (
     <Suspense>
