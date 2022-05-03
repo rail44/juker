@@ -8,8 +8,11 @@ use axum::{
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
+use tower_http::trace::{
+    DefaultOnEos, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer,
+};
+use tracing::Level;
 use tracing_subscriber;
-use tower_http::trace::TraceLayer;
 use url::Url;
 
 mod slack;
@@ -50,7 +53,13 @@ async fn main() {
         .route("/command", post(command))
         .route("/command", get(command))
         .route("/interactive", post(interactive))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(DefaultOnRequest::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO))
+                .on_failure(DefaultOnFailure::new().level(Level::INFO))
+                .on_eos(DefaultOnEos::new().level(Level::INFO)),
+        )
         .layer(Extension(state));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     axum::Server::bind(&addr)
@@ -79,15 +88,16 @@ async fn interactive(
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
     let url = Url::parse(&req.payload.state.values.url.text.value).unwrap();
-    let id = url.query_pairs().find_map(|(k, v)| {
-        if k == "v" {
-            Some(v)
-        } else {
-            None
-        }
-    }).unwrap();
+    let id = url
+        .query_pairs()
+        .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
+        .unwrap();
 
-    let vid_req = VideoRequest::new(req.payload.user.username.to_string(), id.to_string(), req.payload.state.values.like.text.value.to_string());
+    let vid_req = VideoRequest::new(
+        req.payload.user.username.to_string(),
+        id.to_string(),
+        req.payload.state.values.like.text.value.to_string(),
+    );
     state.queue.write().unwrap().push(vid_req.clone());
     tracing::info!("{:?}", vid_req);
     StatusCode::OK
