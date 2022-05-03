@@ -1,5 +1,5 @@
 use reqwest;
-use reqwest::header::CONTENT_TYPE;
+use reqwest::header::ACCEPT_CHARSET;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
@@ -58,7 +58,7 @@ pub async fn view_open(trigger_id: &str) {
     let res = client
         .post("https://slack.com/api/views.open")
         .bearer_auth(token.clone())
-        .header(CONTENT_TYPE, "application/json; charset=UTF-8")
+        .header(ACCEPT_CHARSET, "utf-8")
         .json(&json!({
             "token": token,
             "trigger_id": trigger_id,
