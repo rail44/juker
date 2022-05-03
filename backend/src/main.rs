@@ -8,6 +8,7 @@ use axum::{
 use serde_json::json;
 use serde::Deserialize;
 use reqwest;
+use reqwest::header::CONTENT_TYPE;
 use std::env;
 use std::net::SocketAddr;
 use tracing_subscriber;
@@ -35,9 +36,10 @@ async fn slack_view_open(trigger_id: &str) {
         "blocks": [
             {
                 "type": "input",
+                "block_id": "url",
                 "element": {
                     "type": "plain_text_input",
-                    "action_id": "plain_text_input-acton"
+                    "action_id": "text"
                 },
                 "label": {
                     "type": "plain_text",
@@ -47,9 +49,11 @@ async fn slack_view_open(trigger_id: &str) {
             },
             {
                 "type": "input",
+                "block_id": "like",
+                "optional": true,
                 "element": {
                     "type": "plain_text_input",
-                    "action_id": "plain_text_input-action"
+                    "action_id": "text"
                 },
                 "label": {
                     "type": "plain_text",
@@ -62,6 +66,7 @@ async fn slack_view_open(trigger_id: &str) {
     let client = reqwest::Client::new();
     let res = client.post("https://slack.com/api/views.open")
         .bearer_auth(token.clone())
+        .header(CONTENT_TYPE, "application/json; charset=utf-8")
         .json(&json!({
             "token": token,
             "trigger_id": trigger_id,
@@ -106,10 +111,44 @@ async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
 
 #[derive(Deserialize)]
 struct InteractiveRequest {
-    payload: String
+    payload: InteractivePayload
+}
+
+#[derive(Deserialize)]
+struct InteractiveUserPayload {
+    username: String
+}
+
+#[derive(Deserialize)]
+struct InteractiveTextInputPayload {
+    text: InteractiveTextValuePayload
+}
+
+#[derive(Deserialize)]
+struct InteractiveTextValuePayload {
+    value: String
+}
+
+#[derive(Deserialize)]
+struct InteractiveValuesPayload {
+    url: InteractiveTextInputPayload,
+    like: InteractiveTextInputPayload,
+}
+
+#[derive(Deserialize)]
+struct InteractiveStatePayload {
+    values: InteractiveValuesPayload
+}
+
+#[derive(Deserialize)]
+struct InteractivePayload {
+    user: InteractiveUserPayload,
+    state: InteractiveStatePayload,
 }
 
 async fn interactive(req: Form<InteractiveRequest>) -> impl IntoResponse {
-    tracing::info!("{}", req.payload);
+    tracing::info!("url: {}", req.payload.state.values.url.text.value);
+    tracing::info!("like: {}", req.payload.state.values.like.text.value);
+    tracing::info!("username: {}", req.payload.user.username);
     StatusCode::OK
 }
