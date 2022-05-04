@@ -12,15 +12,17 @@ use futures::{
     sink::SinkExt,
     stream::{SplitStream, StreamExt},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use url::Url;
 
 mod slack;
+mod state;
+
+use state::{Pointer, State, VideoRequest};
 
 fn ws_chan(socket: WebSocket) -> (UnboundedSender<Message>, SplitStream<WebSocket>) {
     let (mut ws_sender, ws_receiver) = socket.split();
@@ -45,79 +47,6 @@ enum SocketMessage {
     Ping,
     #[serde(rename = "feed")]
     Feed { pointer: usize },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct VideoRequest {
-    author: String,
-    id: String,
-    like: Option<String>,
-}
-
-impl VideoRequest {
-    fn new(author: String, id: String, like: Option<String>) -> Self {
-        VideoRequest { author, id, like }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(untagged)]
-enum Pointer {
-    Playing(usize),
-    Stopping,
-}
-
-impl Default for Pointer {
-    fn default() -> Self {
-        Self::Stopping
-    }
-}
-
-#[derive(Debug)]
-struct State {
-    pointer: RwLock<Pointer>,
-    begin: RwLock<i64>,
-    queue: RwLock<Vec<VideoRequest>>,
-    txs: RwLock<Vec<UnboundedSender<Message>>>,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            begin: RwLock::new(Utc::now().timestamp()),
-            pointer: Default::default(),
-            queue: Default::default(),
-            txs: Default::default(),
-        }
-    }
-}
-impl State {
-    async fn get_response(&self) -> StateResponse {
-        StateResponse {
-            pointer: self.pointer.read().await.clone(),
-            queue: self.queue.read().await.clone(),
-            duration: Utc::now().timestamp() - *self.begin.read().await,
-            listeners: self.txs.read().await.len(),
-        }
-    }
-
-    async fn broadcast(&self) {
-        for sender in self.txs.read().await.clone() {
-            sender
-                .send(ws::Message::Text(
-                    serde_json::to_string(&self.get_response().await).unwrap(),
-                ))
-                .ok();
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct StateResponse {
-    pointer: Pointer,
-    queue: Vec<VideoRequest>,
-    duration: i64,
-    listeners: usize,
 }
 
 #[tokio::main]
