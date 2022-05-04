@@ -184,7 +184,12 @@ async fn interactive(
         payload.view.state.values.like.input.value,
     );
     state.queue.write().await.push(vid_req.clone());
-    tracing::info!("{:?}", vid_req);
+
+    if *state.pointer.read().await == Pointer::Stopping {
+        *state.pointer.write().await = Pointer::Playing(state.queue.read().await.len() - 1);
+        *state.begin.write().await = Utc::now().timestamp();
+        state.broadcast().await;
+    }
     StatusCode::OK
 }
 
@@ -195,8 +200,9 @@ async fn request(
     tracing::info!("{:?}", req);
     state.queue.write().await.push(req);
 
-    if state.pointer.read().await.clone() == Pointer::Stopping {
+    if *state.pointer.read().await == Pointer::Stopping {
         *state.pointer.write().await = Pointer::Playing(state.queue.read().await.len() - 1);
+        *state.begin.write().await = Utc::now().timestamp();
         state.broadcast().await;
     }
     StatusCode::OK
