@@ -13,8 +13,13 @@ declare global {
 
 const API_HOST = "localhost:8080";
 
+function sendMessage(socket: WebSocket, message: SocketRequest) {
+  socket.send(JSON.stringify(message));
+}
+
 const Player: Component<{
   videoId: string | null;
+  pointer: number;
   socket: WebSocket;
   duration: number;
 }> = (props) => {
@@ -26,6 +31,10 @@ const Player: Component<{
       height: "360",
       width: "640",
       videoId: props.videoId,
+      playerVars: {
+        controls: 0,
+        disablekb: 1,
+      },
       events: {
         onReady: () => {
           setReady(true);
@@ -33,11 +42,14 @@ const Player: Component<{
         onStateChange: (ev: any) => {
           console.log(ev.data);
           if (ev.data === 1) {
-            props.socket.send("ping");
+            sendMessage(props.socket, { type: "ping" });
           }
 
           if (ev.data === 0) {
-            props.socket.send("feed");
+            sendMessage(props.socket, {
+              type: "feed",
+              pointer: props.pointer + 1,
+            });
           }
         },
       },
@@ -68,7 +80,18 @@ interface VideoRequest {
   id: string;
 }
 
-interface SocketMessage {
+type SocketRequest = Ping | Feed;
+
+interface Ping {
+  type: "ping";
+}
+
+interface Feed {
+  type: "feed";
+  pointer: number;
+}
+
+interface SocketReceived {
   pointer: number;
   duration: number;
   queue: VideoRequest[];
@@ -77,12 +100,13 @@ interface SocketMessage {
 const App: Component<{ socket: WebSocket }> = (props) => {
   const [initialized, setInitialized] = createSignal(false);
   const [videoId, setVideoId] = createSignal("");
+  const [pointer, setPointer] = createSignal(0);
   const [duration, setDuration] = createSignal(0);
 
   onMount(() => {
     props.socket.addEventListener("message", (event) => {
       console.log(event);
-      const message: SocketMessage = JSON.parse(event.data);
+      const message: SocketReceived = JSON.parse(event.data);
       const req = message.queue[message.pointer];
       if (!req) {
         return;
@@ -90,10 +114,11 @@ const App: Component<{ socket: WebSocket }> = (props) => {
 
       setVideoId(req.id);
       setDuration(message.duration);
+      setPointer(message.pointer);
       setInitialized(true);
     });
 
-    props.socket.send("ping");
+    sendMessage(props.socket, { type: "ping" });
   });
 
   return (
@@ -103,6 +128,7 @@ const App: Component<{ socket: WebSocket }> = (props) => {
           videoId={videoId()}
           duration={duration()}
           socket={props.socket}
+          pointer={pointer()}
         />
       </Show>
     </div>

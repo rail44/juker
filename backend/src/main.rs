@@ -1,6 +1,6 @@
 use axum::{
     extract::ws,
-    extract::ws::{WebSocket, WebSocketUpgrade},
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::{Extension, Form, Json},
     http::{Request, StatusCode},
     response::{IntoResponse, Response},
@@ -8,16 +8,46 @@ use axum::{
     Router,
 };
 use chrono::Utc;
-use serde::{Deserialize, Serialize, Serializer};
-use serde_json::json;
+use futures::{
+    sink::SinkExt,
+    stream::{SplitStream, StreamExt},
+};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::RwLock;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 use url::Url;
 
 mod slack;
+
+fn ws_chan(socket: WebSocket) -> (UnboundedSender<Message>, SplitStream<WebSocket>) {
+    let (mut ws_sender, ws_receiver) = socket.split();
+    let (tx_sender, tx_receiver) = unbounded_channel();
+    tokio::spawn(async move {
+        let mut stream = UnboundedReceiverStream::new(tx_receiver);
+        while let Some(message) = stream.next().await {
+            if ws_sender.send(message).await.is_err() {
+                stream.close();
+            }
+        }
+    });
+
+    (tx_sender, ws_receiver)
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum SocketMessage {
+    #[serde(rename = "ping")]
+    Ping,
+    #[serde(rename = "feed")]
+    Feed { pointer: usize },
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VideoRequest {
@@ -37,6 +67,7 @@ struct State {
     pointer: RwLock<usize>,
     begin: RwLock<i64>,
     queue: RwLock<Vec<VideoRequest>>,
+    txs: RwLock<Vec<UnboundedSender<Message>>>,
 }
 
 impl Default for State {
@@ -45,21 +76,25 @@ impl Default for State {
             begin: RwLock::new(Utc::now().timestamp()),
             pointer: Default::default(),
             queue: Default::default(),
+            txs: Default::default(),
         }
     }
 }
 
-impl Serialize for State {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        json!({
-            "pointer": self.pointer,
-            "queue": self.queue.read().unwrap().clone(),
-            "duration": Utc::now().timestamp() - *self.begin.read().unwrap(),
-        })
-        .serialize(serializer)
+#[derive(Serialize)]
+struct StateResponse {
+    pointer: usize,
+    queue: Vec<VideoRequest>,
+    duration: i64,
+}
+
+impl State {
+    async fn get_response(&self) -> StateResponse {
+        StateResponse {
+            pointer: *self.pointer.read().await,
+            queue: self.queue.read().await.clone(),
+            duration: Utc::now().timestamp() - *self.begin.read().await,
+        }
     }
 }
 
@@ -69,14 +104,14 @@ async fn main() {
 
     let initial_state = State::default();
 
-    initial_state.queue.write().unwrap().push(VideoRequest::new(
+    initial_state.queue.write().await.push(VideoRequest::new(
         "rail44".into(),
-        "AlXGFHExSL4".into(),
+        "BDrdOKcqlYc".into(),
         Some("ここすき".into()),
     ));
-    initial_state.queue.write().unwrap().push(VideoRequest::new(
+    initial_state.queue.write().await.push(VideoRequest::new(
         "rail44".into(),
-        "mM7txmeCMRw".into(),
+        "oPELPOgDyXA".into(),
         Some("ここすき".into()),
     ));
 
@@ -135,7 +170,7 @@ async fn interactive(
         id.to_string(),
         payload.view.state.values.like.input.value,
     );
-    state.queue.write().unwrap().push(vid_req.clone());
+    state.queue.write().await.push(vid_req.clone());
     tracing::info!("{:?}", vid_req);
     StatusCode::OK
 }
@@ -145,12 +180,13 @@ async fn request(
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
     tracing::info!("{:?}", req);
-    state.queue.write().unwrap().push(req);
+    state.queue.write().await.push(req);
     StatusCode::OK
 }
 
 async fn state(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
-    (StatusCode::OK, Json(state))
+    tracing::info!("{:?}", *state.txs.read().await);
+    (StatusCode::OK, Json(state.get_response().await))
 }
 
 async fn socket_upgrade(
@@ -160,27 +196,54 @@ async fn socket_upgrade(
     ws.on_upgrade(|socket| socket_handler(socket, state))
 }
 
-async fn socket_handler(mut socket: WebSocket, state: Arc<State>) {
-    while let Some(msg) = socket.recv().await {
-        let body = msg.unwrap().into_text().unwrap();
-        if body == "ping" {
-            socket
-                .send(ws::Message::Text(serde_json::to_string(&state).unwrap()))
-                .await
-                .unwrap();
-        }
+async fn socket_handler(socket: WebSocket, state: Arc<State>) {
+    let (sender, mut receiver) = ws_chan(socket);
+    state.txs.write().await.push(sender.clone());
 
-        if body == "feed" {
-            {
-                let mut pointer = state.pointer.write().unwrap();
-                let mut begin = state.begin.write().unwrap();
-                *pointer += 1;
-                *begin = Utc::now().timestamp();
+    while let Some(msg) = receiver.next().await {
+        let body = msg.unwrap().into_text().unwrap();
+        tracing::info!("{}", body);
+
+        if let Ok(msg) = serde_json::from_str(&body) {
+            match msg {
+                SocketMessage::Ping => {
+                    sender
+                        .send(ws::Message::Text(
+                            serde_json::to_string(&state.get_response().await).unwrap(),
+                        ))
+                        .unwrap();
+                }
+                SocketMessage::Feed {
+                    pointer: next_pointer,
+                } => {
+                    if *state.pointer.read().await != next_pointer {
+                        {
+                            let queue = state.queue.read().await;
+                            if queue.len() <= next_pointer {
+                                *state.pointer.write().await = 0;
+                            } else {
+                                *state.pointer.write().await = next_pointer;
+                            }
+                        }
+
+                        *state.begin.write().await = Utc::now().timestamp();
+
+                        tracing::info!("{:?}", *state.txs.read().await);
+                        for sender in state.txs.read().await.clone() {
+                            if sender.is_closed() {
+                                state.txs.write().await.retain(|v| !sender.same_channel(v));
+                                continue;
+                            }
+                            if let Err(_) = sender
+                                .send(ws::Message::Text(
+                                    serde_json::to_string(&state.get_response().await).unwrap(),
+                                )) {
+                                    state.txs.write().await.retain(|v| !sender.same_channel(v));
+                                }
+                        }
+                    }
+                }
             }
-            socket
-                .send(ws::Message::Text(serde_json::to_string(&state).unwrap()))
-                .await
-                .unwrap();
-        }
+        };
     }
 }
