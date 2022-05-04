@@ -100,6 +100,7 @@ impl State {
             pointer: self.pointer.read().await.clone(),
             queue: self.queue.read().await.clone(),
             duration: Utc::now().timestamp() - *self.begin.read().await,
+            listener: self.txs.read().await.len(),
         }
     }
 
@@ -119,6 +120,7 @@ struct StateResponse {
     pointer: Pointer,
     queue: Vec<VideoRequest>,
     duration: i64,
+    listener: usize,
 }
 
 
@@ -240,11 +242,9 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                 SocketMessage::Feed {
                     pointer: next_pointer,
                 } => {
-                    match *state.pointer.read().await {
-                        Pointer::Stopping => {
-                            *state.pointer.write().await = Pointer::Playing(next_pointer);
-                            state.broadcast().await;
-                        }
+                    let pointer = state.pointer.read().await.clone();
+                    match pointer {
+                        Pointer::Stopping => {}
                         Pointer::Playing(pointer) => {
                             if pointer == next_pointer {
                                 continue;

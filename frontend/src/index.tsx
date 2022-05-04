@@ -11,7 +11,8 @@ declare global {
   var YT: any;
 }
 
-const API_HOST = "juker.onrender.com";
+// const WS_ENDPOINT = "wss://juker.onrender.com/socket";
+const WS_ENDPOINT = "ws://localhost:8080/socket";
 
 function sendMessage(socket: WebSocket, message: SocketRequest) {
   socket.send(JSON.stringify(message));
@@ -63,6 +64,7 @@ const Player: Component<{
       return;
     }
 
+    console.log(1234);
     player.loadVideoById(props.videoId);
   });
 
@@ -93,10 +95,11 @@ interface Feed {
   pointer: number;
 }
 
-interface SocketReceived {
+interface SocketResponse {
   pointer: number;
   duration: number;
   queue: VideoRequest[];
+  listener: number;
 }
 
 const App: Component<{ socket: WebSocket }> = (props) => {
@@ -109,7 +112,7 @@ const App: Component<{ socket: WebSocket }> = (props) => {
     props.socket.addEventListener("message", (event) => {
       console.log(event);
 
-      const message: SocketReceived = JSON.parse(event.data);
+      const message: SocketResponse = JSON.parse(event.data);
       if (message.pointer === null) {
         return;
       }
@@ -138,7 +141,7 @@ const App: Component<{ socket: WebSocket }> = (props) => {
   );
 };
 
-const socket = new WebSocket(`wss://${API_HOST}/socket`);
+const socket = new WebSocket(WS_ENDPOINT);
 await new Promise((resolve) => socket.addEventListener("open", resolve));
 await window.jukerYtLoadingPromise;
 
