@@ -11,7 +11,7 @@ declare global {
   var YT: any;
 }
 
-const API_HOST = "localhost:8080";
+const API_HOST = "juker.onrender.com";
 
 function sendMessage(socket: WebSocket, message: SocketRequest) {
   socket.send(JSON.stringify(message));
@@ -108,12 +108,13 @@ const App: Component<{ socket: WebSocket }> = (props) => {
   onMount(() => {
     props.socket.addEventListener("message", (event) => {
       console.log(event);
+
       const message: SocketReceived = JSON.parse(event.data);
-      const req = message.queue[message.pointer];
-      if (!req) {
+      if (!message.pointer) {
         return;
       }
 
+      const req = message.queue[message.pointer];
       setVideoId(req.id);
       setDuration(message.duration);
       setPointer(message.pointer);

@@ -63,9 +63,22 @@ impl VideoRequest {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+enum Pointer {
+    Playing(usize),
+    Stopping,
+}
+
+impl Default for Pointer {
+    fn default() -> Self {
+        Self::Stopping
+    }
+}
+
 #[derive(Debug)]
 struct State {
-    pointer: RwLock<usize>,
+    pointer: RwLock<Pointer>,
     begin: RwLock<i64>,
     queue: RwLock<Vec<VideoRequest>>,
     txs: RwLock<Vec<UnboundedSender<Message>>>,
@@ -84,7 +97,7 @@ impl Default for State {
 impl State {
     async fn get_response(&self) -> StateResponse {
         StateResponse {
-            pointer: *self.pointer.read().await,
+            pointer: self.pointer.read().await.clone(),
             queue: self.queue.read().await.clone(),
             duration: Utc::now().timestamp() - *self.begin.read().await,
         }
@@ -103,7 +116,7 @@ impl State {
 
 #[derive(Serialize)]
 struct StateResponse {
-    pointer: usize,
+    pointer: Pointer,
     queue: Vec<VideoRequest>,
     duration: i64,
 }
@@ -216,21 +229,29 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                 SocketMessage::Feed {
                     pointer: next_pointer,
                 } => {
-                    if *state.pointer.read().await == next_pointer {
-                        continue;
-                    }
+                    match *state.pointer.read().await {
+                        Pointer::Stopping => {
+                            *state.pointer.write().await = Pointer::Playing(next_pointer);
+                            state.broadcast().await;
+                        }
+                        Pointer::Playing(pointer) => {
+                            if pointer == next_pointer {
+                                continue;
+                            }
 
-                    {
-                        let queue = state.queue.read().await;
-                        if queue.len() <= next_pointer {
-                            *state.pointer.write().await = 0;
-                        } else {
-                            *state.pointer.write().await = next_pointer;
+                            {
+                                let queue = state.queue.read().await;
+                                if queue.len() <= next_pointer {
+                                    *state.pointer.write().await = Pointer::Stopping;
+                                } else {
+                                    *state.pointer.write().await = Pointer::Playing(next_pointer);
+                                }
+                            }
+
+                            *state.begin.write().await = Utc::now().timestamp();
+                            state.broadcast().await;
                         }
                     }
-
-                    *state.begin.write().await = Utc::now().timestamp();
-                    state.broadcast().await;
                 }
             }
         };
