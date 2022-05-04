@@ -7,7 +7,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use chrono::Utc;
 use futures::{
     sink::SinkExt,
     stream::{SplitStream, StreamExt},
@@ -98,8 +97,7 @@ async fn command(
                 return StatusCode::OK;
             }
 
-            state.assign_pointer(Pointer::Playing(0)).await;
-            *state.begin.write().await = Utc::now().timestamp();
+            state.play(0).await;
             state.broadcast().await;
         }
         _ => {
@@ -131,10 +129,7 @@ async fn interactive(
     state.queue.write().await.push(vid_req.clone());
 
     if state.read_pointer().await == Pointer::Stopping {
-        state
-            .assign_pointer(Pointer::Playing(state.queue.read().await.len() - 1))
-            .await;
-        *state.begin.write().await = Utc::now().timestamp();
+        state.play(state.queue.read().await.len() - 1).await;
         state.broadcast().await;
     }
     StatusCode::OK
@@ -148,10 +143,7 @@ async fn request(
     state.queue.write().await.push(req);
 
     if state.read_pointer().await == Pointer::Stopping {
-        state
-            .assign_pointer(Pointer::Playing(state.queue.read().await.len() - 1))
-            .await;
-        *state.begin.write().await = Utc::now().timestamp();
+        state.play(state.queue.read().await.len() - 1).await;
         state.broadcast().await;
     }
     StatusCode::OK

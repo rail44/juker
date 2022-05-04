@@ -80,9 +80,9 @@ impl State {
                 {
                     let queue = self.queue.read().await;
                     if queue.len() <= next_pointer {
-                        *self.pointer.write().await = Pointer::Stopping;
+                        self.assign_pointer(Pointer::Stopping).await;
                     } else {
-                        *self.pointer.write().await = Pointer::Playing(next_pointer);
+                        self.play(next_pointer).await;
                     }
                 }
 
@@ -96,8 +96,13 @@ impl State {
         self.pointer.read().await.clone()
     }
 
-    pub async fn assign_pointer(&self, p: Pointer) {
+    async fn assign_pointer(&self, p: Pointer) {
         *self.pointer.write().await = p;
+    }
+
+    pub async fn play(&self, i: usize) {
+        self.assign_pointer(Pointer::Playing(i)).await;
+        *self.begin.write().await = Utc::now().timestamp();
     }
 }
 
