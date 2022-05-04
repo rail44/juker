@@ -63,7 +63,7 @@ impl VideoRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(untagged)]
 enum Pointer {
     Playing(usize),
@@ -194,6 +194,11 @@ async fn request(
 ) -> impl IntoResponse {
     tracing::info!("{:?}", req);
     state.queue.write().await.push(req);
+
+    if *state.pointer.read().await == Pointer::Stopping {
+        *state.pointer.write().await = Pointer::Playing(state.queue.read().await.len() - 1);
+        state.broadcast().await;
+    }
     StatusCode::OK
 }
 

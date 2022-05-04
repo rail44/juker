@@ -110,7 +110,7 @@ const App: Component<{ socket: WebSocket }> = (props) => {
       console.log(event);
 
       const message: SocketReceived = JSON.parse(event.data);
-      if (!message.pointer) {
+      if (message.pointer === null) {
         return;
       }
 
@@ -138,7 +138,7 @@ const App: Component<{ socket: WebSocket }> = (props) => {
   );
 };
 
-const socket = new WebSocket(`ws://${API_HOST}/socket`);
+const socket = new WebSocket(`wss://${API_HOST}/socket`);
 await new Promise((resolve) => socket.addEventListener("open", resolve));
 await window.jukerYtLoadingPromise;
 
