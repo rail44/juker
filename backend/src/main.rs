@@ -90,7 +90,7 @@ async fn command(
     // TODO: help, next, prev
     match req.text.as_str() {
         "play" => {
-            if *state.pointer.read().await != Pointer::Stopping {
+            if state.read_pointer().await != Pointer::Stopping {
                 return StatusCode::OK;
             }
 
@@ -98,7 +98,7 @@ async fn command(
                 return StatusCode::OK;
             }
 
-            *state.pointer.write().await = Pointer::Playing(0);
+            state.assign_pointer(Pointer::Playing(0)).await;
             *state.begin.write().await = Utc::now().timestamp();
             state.broadcast().await;
         }
@@ -130,8 +130,10 @@ async fn interactive(
     );
     state.queue.write().await.push(vid_req.clone());
 
-    if *state.pointer.read().await == Pointer::Stopping {
-        *state.pointer.write().await = Pointer::Playing(state.queue.read().await.len() - 1);
+    if state.read_pointer().await == Pointer::Stopping {
+        state
+            .assign_pointer(Pointer::Playing(state.queue.read().await.len() - 1))
+            .await;
         *state.begin.write().await = Utc::now().timestamp();
         state.broadcast().await;
     }
@@ -145,8 +147,10 @@ async fn request(
     tracing::info!("{:?}", req);
     state.queue.write().await.push(req);
 
-    if *state.pointer.read().await == Pointer::Stopping {
-        *state.pointer.write().await = Pointer::Playing(state.queue.read().await.len() - 1);
+    if state.read_pointer().await == Pointer::Stopping {
+        state
+            .assign_pointer(Pointer::Playing(state.queue.read().await.len() - 1))
+            .await;
         *state.begin.write().await = Utc::now().timestamp();
         state.broadcast().await;
     }
@@ -185,7 +189,7 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                 }
                 SocketMessage::Feed {
                     pointer: next_pointer,
-                } => state.feed(next_pointer).await
+                } => state.feed(next_pointer).await,
             }
         };
     }

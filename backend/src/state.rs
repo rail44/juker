@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub struct State {
-    pub pointer: RwLock<Pointer>,
+    pointer: RwLock<Pointer>,
     pub begin: RwLock<i64>,
     pub queue: RwLock<Vec<VideoRequest>>,
     pub txs: RwLock<Vec<UnboundedSender<Message>>>,
@@ -90,6 +90,14 @@ impl State {
                 self.broadcast().await;
             }
         }
+    }
+
+    pub async fn read_pointer(&self) -> Pointer {
+        self.pointer.read().await.clone()
+    }
+
+    pub async fn assign_pointer(&self, p: Pointer) {
+        *self.pointer.write().await = p;
     }
 }
 
