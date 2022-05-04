@@ -185,30 +185,7 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                 }
                 SocketMessage::Feed {
                     pointer: next_pointer,
-                } => {
-                    // TODO: post video info to slack
-                    let pointer = state.pointer.read().await.clone();
-                    match pointer {
-                        Pointer::Stopping => {}
-                        Pointer::Playing(pointer) => {
-                            if pointer == next_pointer {
-                                continue;
-                            }
-
-                            {
-                                let queue = state.queue.read().await;
-                                if queue.len() <= next_pointer {
-                                    *state.pointer.write().await = Pointer::Stopping;
-                                } else {
-                                    *state.pointer.write().await = Pointer::Playing(next_pointer);
-                                }
-                            }
-
-                            *state.begin.write().await = Utc::now().timestamp();
-                            state.broadcast().await;
-                        }
-                    }
-                }
+                } => state.feed(next_pointer).await
             }
         };
     }

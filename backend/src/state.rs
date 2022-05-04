@@ -67,6 +67,30 @@ impl State {
                 .ok();
         }
     }
+
+    pub async fn feed(&self, next_pointer: usize) {
+        let pointer = self.pointer.read().await.clone();
+        match pointer {
+            Pointer::Stopping => {}
+            Pointer::Playing(pointer) => {
+                if pointer == next_pointer {
+                    return;
+                }
+
+                {
+                    let queue = self.queue.read().await;
+                    if queue.len() <= next_pointer {
+                        *self.pointer.write().await = Pointer::Stopping;
+                    } else {
+                        *self.pointer.write().await = Pointer::Playing(next_pointer);
+                    }
+                }
+
+                *self.begin.write().await = Utc::now().timestamp();
+                self.broadcast().await;
+            }
+        }
+    }
 }
 
 #[derive(Serialize)]
