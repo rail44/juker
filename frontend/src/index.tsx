@@ -11,8 +11,9 @@ declare global {
   var YT: any;
 }
 
-const WS_ENDPOINT = "wss://juker.onrender.com/socket";
-// const WS_ENDPOINT = "ws://localhost:8080/socket";
+// TODO: detect environment and switch endpoit for websocket
+// const WS_ENDPOINT = "wss://juker.onrender.com/socket";
+const WS_ENDPOINT = "ws://localhost:8080/socket";
 
 function sendMessage(socket: WebSocket, message: SocketRequest) {
   socket.send(JSON.stringify(message));
@@ -20,7 +21,7 @@ function sendMessage(socket: WebSocket, message: SocketRequest) {
 
 const Player: Component<{
   videoId: string | null;
-  pointer: number;
+  pointer: number | null;
   socket: WebSocket;
   duration: number;
 }> = (props) => {
@@ -49,6 +50,10 @@ const Player: Component<{
           }
 
           if (ev.data === 0) {
+            if (props.pointer === null) {
+              return;
+            }
+
             sendMessage(props.socket, {
               type: "feed",
               pointer: props.pointer + 1,
@@ -64,7 +69,10 @@ const Player: Component<{
       return;
     }
 
-    props.pointer;
+    if (props.pointer === null) {
+      return;
+    }
+
     player.loadVideoById(props.videoId);
   });
 
@@ -99,7 +107,7 @@ interface Feed {
 }
 
 interface SocketResponse {
-  pointer: number;
+  pointer: number | null;
   duration: number;
   queue: VideoRequest[];
   listeners: number;
@@ -107,8 +115,8 @@ interface SocketResponse {
 
 const App: Component<{ socket: WebSocket }> = (props) => {
   const [initialized, setInitialized] = createSignal(false);
-  const [videoId, setVideoId] = createSignal("");
-  const [pointer, setPointer] = createSignal(0);
+  const [videoId, setVideoId] = createSignal<string | null>(null);
+  const [pointer, setPointer] = createSignal<number | null>(null);
   const [duration, setDuration] = createSignal(0);
   const [listeners, setListeners] = createSignal(0);
 
@@ -118,10 +126,11 @@ const App: Component<{ socket: WebSocket }> = (props) => {
 
       const message: SocketResponse = JSON.parse(event.data);
       setDuration(message.duration);
-      setPointer(message.pointer);
       setListeners(message.listeners);
 
+      setPointer(message.pointer);
       if (message.pointer === null) {
+        setVideoId(null);
         return;
       }
 
@@ -151,6 +160,7 @@ const App: Component<{ socket: WebSocket }> = (props) => {
 };
 
 const socket = new WebSocket(WS_ENDPOINT);
+// TODO: notify and reloading when error occuring on websocket
 await new Promise((resolve) => socket.addEventListener("open", resolve));
 await window.jukerYtLoadingPromise;
 

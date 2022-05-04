@@ -123,7 +123,6 @@ struct StateResponse {
     listeners: usize,
 }
 
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -159,10 +158,32 @@ async fn status() -> &'static str {
 #[derive(Deserialize)]
 struct CommandRequest {
     trigger_id: String,
+    text: String,
 }
 
-async fn command(req: Form<CommandRequest>) -> impl IntoResponse {
-    slack::view_open(&req.trigger_id).await;
+async fn command(
+    req: Form<CommandRequest>,
+    Extension(state): Extension<Arc<State>>,
+) -> impl IntoResponse {
+    // TODO: help, next, prev
+    match req.text.as_str() {
+        "play" => {
+            if *state.pointer.read().await != Pointer::Stopping {
+                return StatusCode::OK;
+            }
+
+            if state.txs.read().await.len() == 0 {
+                return StatusCode::OK;
+            }
+
+            *state.pointer.write().await = Pointer::Playing(0);
+            *state.begin.write().await = Utc::now().timestamp();
+            state.broadcast().await;
+        }
+        _ => {
+            slack::view_open(&req.trigger_id).await;
+        }
+    }
 
     StatusCode::OK
 }
@@ -243,6 +264,7 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                 SocketMessage::Feed {
                     pointer: next_pointer,
                 } => {
+                    // TODO: post video info to slack
                     let pointer = state.pointer.read().await.clone();
                     match pointer {
                         Pointer::Stopping => {}
