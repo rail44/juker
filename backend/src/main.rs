@@ -32,9 +32,10 @@ fn ws_chan(socket: WebSocket) -> (UnboundedSender<Message>, SplitStream<WebSocke
         let mut stream = UnboundedReceiverStream::new(tx_receiver);
         while let Some(message) = stream.next().await {
             if ws_sender.send(message).await.is_err() {
-                stream.close();
+                break;
             }
         }
+        stream.close();
     });
 
     (tx_sender, ws_receiver)
@@ -80,14 +81,6 @@ impl Default for State {
         }
     }
 }
-
-#[derive(Serialize)]
-struct StateResponse {
-    pointer: usize,
-    queue: Vec<VideoRequest>,
-    duration: i64,
-}
-
 impl State {
     async fn get_response(&self) -> StateResponse {
         StateResponse {
@@ -96,24 +89,31 @@ impl State {
             duration: Utc::now().timestamp() - *self.begin.read().await,
         }
     }
+
+    async fn broadcast(&self) {
+        for sender in self.txs.read().await.clone() {
+            sender
+                .send(ws::Message::Text(
+                    serde_json::to_string(&self.get_response().await).unwrap(),
+                ))
+                .ok();
+        }
+    }
 }
+
+#[derive(Serialize)]
+struct StateResponse {
+    pointer: usize,
+    queue: Vec<VideoRequest>,
+    duration: i64,
+}
+
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
     let initial_state = State::default();
-
-    initial_state.queue.write().await.push(VideoRequest::new(
-        "rail44".into(),
-        "BDrdOKcqlYc".into(),
-        Some("ここすき".into()),
-    ));
-    initial_state.queue.write().await.push(VideoRequest::new(
-        "rail44".into(),
-        "oPELPOgDyXA".into(),
-        Some("ここすき".into()),
-    ));
 
     let app = Router::new()
         .route("/state", get(state))
@@ -185,7 +185,6 @@ async fn request(
 }
 
 async fn state(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
-    tracing::info!("{:?}", *state.txs.read().await);
     (StatusCode::OK, Json(state.get_response().await))
 }
 
@@ -198,6 +197,7 @@ async fn socket_upgrade(
 
 async fn socket_handler(socket: WebSocket, state: Arc<State>) {
     let (sender, mut receiver) = ws_chan(socket);
+    // TODO: hashmap with unique id
     state.txs.write().await.push(sender.clone());
 
     while let Some(msg) = receiver.next().await {
@@ -216,34 +216,24 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                 SocketMessage::Feed {
                     pointer: next_pointer,
                 } => {
-                    if *state.pointer.read().await != next_pointer {
-                        {
-                            let queue = state.queue.read().await;
-                            if queue.len() <= next_pointer {
-                                *state.pointer.write().await = 0;
-                            } else {
-                                *state.pointer.write().await = next_pointer;
-                            }
-                        }
+                    if *state.pointer.read().await == next_pointer {
+                        continue;
+                    }
 
-                        *state.begin.write().await = Utc::now().timestamp();
-
-                        tracing::info!("{:?}", *state.txs.read().await);
-                        for sender in state.txs.read().await.clone() {
-                            if sender.is_closed() {
-                                state.txs.write().await.retain(|v| !sender.same_channel(v));
-                                continue;
-                            }
-                            if let Err(_) = sender
-                                .send(ws::Message::Text(
-                                    serde_json::to_string(&state.get_response().await).unwrap(),
-                                )) {
-                                    state.txs.write().await.retain(|v| !sender.same_channel(v));
-                                }
+                    {
+                        let queue = state.queue.read().await;
+                        if queue.len() <= next_pointer {
+                            *state.pointer.write().await = 0;
+                        } else {
+                            *state.pointer.write().await = next_pointer;
                         }
                     }
+
+                    *state.begin.write().await = Utc::now().timestamp();
+                    state.broadcast().await;
                 }
             }
         };
     }
+    state.txs.write().await.retain(|v| !sender.same_channel(v));
 }

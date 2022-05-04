@@ -23,6 +23,8 @@ const Player: Component<{
   socket: WebSocket;
   duration: number;
 }> = (props) => {
+  // TODO: filter frequently prop changing
+
   const [ready, setReady] = createSignal(false);
   const uuid = uuidv4();
   let player: any;
