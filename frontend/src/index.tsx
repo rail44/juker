@@ -64,7 +64,7 @@ const Player: Component<{
       return;
     }
 
-    console.log(1234);
+    props.pointer;
     player.loadVideoById(props.videoId);
   });
 
@@ -73,7 +73,10 @@ const Player: Component<{
       return;
     }
 
-    console.log(props.duration);
+    if (Math.abs(player.getCurrentTime() - props.duration) <= 5) {
+      return;
+    }
+
     player.seekTo(props.duration);
   });
 
@@ -99,7 +102,7 @@ interface SocketResponse {
   pointer: number;
   duration: number;
   queue: VideoRequest[];
-  listener: number;
+  listeners: number;
 }
 
 const App: Component<{ socket: WebSocket }> = (props) => {
@@ -107,20 +110,23 @@ const App: Component<{ socket: WebSocket }> = (props) => {
   const [videoId, setVideoId] = createSignal("");
   const [pointer, setPointer] = createSignal(0);
   const [duration, setDuration] = createSignal(0);
+  const [listeners, setListeners] = createSignal(0);
 
   onMount(() => {
     props.socket.addEventListener("message", (event) => {
       console.log(event);
 
       const message: SocketResponse = JSON.parse(event.data);
+      setDuration(message.duration);
+      setPointer(message.pointer);
+      setListeners(message.listeners);
+
       if (message.pointer === null) {
         return;
       }
 
       const req = message.queue[message.pointer];
       setVideoId(req.id);
-      setDuration(message.duration);
-      setPointer(message.pointer);
       setInitialized(true);
     });
 
@@ -129,14 +135,17 @@ const App: Component<{ socket: WebSocket }> = (props) => {
 
   return (
     <div>
-      <Show when={initialized()}>
-        <Player
-          videoId={videoId()}
-          duration={duration()}
-          socket={props.socket}
-          pointer={pointer()}
-        />
-      </Show>
+      <div>
+        <Show when={initialized()}>
+          <Player
+            videoId={videoId()}
+            duration={duration()}
+            socket={props.socket}
+            pointer={pointer()}
+          />
+        </Show>
+      </div>
+      <div>listeners: {listeners()}</div>
     </div>
   );
 };

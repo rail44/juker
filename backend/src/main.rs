@@ -100,7 +100,7 @@ impl State {
             pointer: self.pointer.read().await.clone(),
             queue: self.queue.read().await.clone(),
             duration: Utc::now().timestamp() - *self.begin.read().await,
-            listener: self.txs.read().await.len(),
+            listeners: self.txs.read().await.len(),
         }
     }
 
@@ -120,7 +120,7 @@ struct StateResponse {
     pointer: Pointer,
     queue: Vec<VideoRequest>,
     duration: i64,
-    listener: usize,
+    listeners: usize,
 }
 
 
@@ -225,6 +225,7 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
     let (sender, mut receiver) = ws_chan(socket);
     // TODO: hashmap with unique id
     state.txs.write().await.push(sender.clone());
+    state.broadcast().await;
 
     while let Some(msg) = receiver.next().await {
         let body = msg.unwrap().into_text().unwrap();
@@ -267,5 +268,7 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
             }
         };
     }
+
     state.txs.write().await.retain(|v| !sender.same_channel(v));
+    state.broadcast().await;
 }
