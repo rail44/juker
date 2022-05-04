@@ -2,8 +2,8 @@ use axum::{
     extract::ws,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::{Extension, Form, Json},
-    http::{Request, StatusCode},
-    response::{IntoResponse, Response},
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -15,12 +15,9 @@ use futures::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tower_http::trace::TraceLayer;
-use tracing::Span;
 use url::Url;
 
 mod slack;
@@ -129,6 +126,7 @@ async fn main() {
 
     let initial_state = State::default();
 
+    // TODO: redirect to frontend when someone accessing to `/`
     let app = Router::new()
         .route("/state", get(state))
         .route("/status", get(status))
@@ -136,13 +134,6 @@ async fn main() {
         .route("/interactive", post(interactive))
         .route("/request", post(request))
         .route("/socket", get(socket_upgrade))
-        .layer(
-            TraceLayer::new_for_http()
-                .on_request(|req: &Request<_>, _: &Span| tracing::info!("{:?}", req))
-                .on_response(|res: &Response<_>, _: Duration, _: &Span| {
-                    tracing::info!("{:?}", res)
-                }),
-        )
         .layer(Extension(Arc::new(initial_state)));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     axum::Server::bind(&addr)
@@ -155,7 +146,7 @@ async fn status() -> &'static str {
     "ok"
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct CommandRequest {
     trigger_id: String,
     text: String,
@@ -165,6 +156,8 @@ async fn command(
     req: Form<CommandRequest>,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
+    tracing::info!("{:?}", req);
+
     // TODO: help, next, prev
     match req.text.as_str() {
         "play" => {

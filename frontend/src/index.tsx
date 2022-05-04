@@ -12,8 +12,8 @@ declare global {
 }
 
 // TODO: detect environment and switch endpoit for websocket
-// const WS_ENDPOINT = "wss://juker.onrender.com/socket";
-const WS_ENDPOINT = "ws://localhost:8080/socket";
+const WS_ENDPOINT = "wss://juker.onrender.com/socket";
+// const WS_ENDPOINT = "ws://localhost:8080/socket";
 
 function sendMessage(socket: WebSocket, message: SocketRequest) {
   socket.send(JSON.stringify(message));
