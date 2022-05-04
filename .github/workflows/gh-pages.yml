@@ -30,3 +30,10 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./frontend/dist 
+
+      - uses: slackapi/slack-github-action@v1.19.0
+        with:
+          channel-id: C03DXGTRP45
+          slack-message: "Frontend deploying result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
