@@ -1,3 +1,5 @@
+use crate::youtube;
+use crate::youtube::VideoProps;
 use axum::{extract::ws, extract::ws::Message};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -15,13 +17,18 @@ pub struct State {
 #[derive(Debug, Clone, Deserialize)]
 pub struct VideoRequest {
     author: String,
-    id: String,
     like: Option<String>,
+    video: VideoProps,
 }
 
 impl VideoRequest {
-    pub fn new(author: String, id: String, like: Option<String>) -> Self {
-        VideoRequest { author, id, like }
+    pub async fn new(author: String, id: String, like: Option<String>) -> Option<Self> {
+        let video = youtube::get_video_props(&id).await?;
+        Some(VideoRequest {
+            author,
+            video,
+            like,
+        })
     }
 }
 
@@ -52,7 +59,7 @@ impl State {
                     let req = self.get_video_request(position).await;
                     let duration_mill = Utc::now().timestamp_millis() - begin_milli;
                     Some(PlayingResponse {
-                        id: req.id,
+                        id: req.video.id,
                         duration: (duration_mill as f32) / 1000_f32,
                         position,
                     })
@@ -115,11 +122,11 @@ impl State {
         self.broadcast().await;
 
         crate::slack::post_block_message(crate::slack::req_info_payload(
-            "dummy title",
-            &req.id,
+            &req.video,
             &req.author,
             req.like.as_deref(),
-        )).await;
+        ))
+        .await;
     }
 }
 

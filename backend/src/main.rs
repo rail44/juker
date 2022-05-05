@@ -21,6 +21,7 @@ use url::Url;
 mod env;
 mod slack;
 mod state;
+mod youtube;
 
 use state::{PlayingStatus, State, VideoRequest};
 
@@ -154,32 +155,43 @@ async fn interactive(
             .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
             .unwrap();
 
-        let vid_req = VideoRequest::new(
+        if let Some(vid_req) = VideoRequest::new(
             payload.user.username,
             id.to_string(),
             payload.view.state.values.like.input.value,
-        );
-        state.queue.write().await.push(vid_req.clone());
+        )
+        .await
+        {
+            state.queue.write().await.push(vid_req.clone());
 
-        if state.read_playing().await == None {
-            state.play(state.queue.read().await.len() - 1).await;
-            state.broadcast().await;
+            if state.read_playing().await == None {
+                state.play(state.queue.read().await.len() - 1).await;
+                state.broadcast().await;
+            }
         }
     }
 
     StatusCode::OK
 }
 
+#[derive(Deserialize, Debug)]
+struct RequestRequest {
+    author: String,
+    id: String,
+    like: Option<String>,
+}
+
 async fn request(
-    Json(req): Json<VideoRequest>,
+    Json(req): Json<RequestRequest>,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
-    tracing::info!("{:?}", req);
-    state.queue.write().await.push(req);
+    if let Some(vid_req) = VideoRequest::new(req.author, req.id, req.like).await {
+        state.queue.write().await.push(vid_req);
 
-    if state.read_playing().await == None {
-        state.play(state.queue.read().await.len() - 1).await;
-        state.broadcast().await;
+        if state.read_playing().await == None {
+            state.play(state.queue.read().await.len() - 1).await;
+            state.broadcast().await;
+        }
     }
     StatusCode::OK
 }

@@ -1,5 +1,6 @@
 use crate::env::{get_env, Env};
-use reqwest::header::{ACCEPT_CHARSET, CONTENT_TYPE};
+use crate::youtube::VideoProps;
+use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
@@ -8,8 +9,7 @@ use tokio::sync::OnceCell;
 static SLACK_TOKEN: OnceCell<String> = OnceCell::const_new();
 
 pub fn req_info_payload(
-    title: &str,
-    id: &str,
+    video: &VideoProps,
     user: &str,
     like: Option<&str>,
 ) -> Vec<serde_json::Value> {
@@ -18,7 +18,7 @@ pub fn req_info_payload(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": format!(":tv: *{}*", title),
+                "text": format!(":tv: *{}* - *{}*", video.title, video.channel),
             }
         }),
         json!({
@@ -59,7 +59,7 @@ pub fn req_info_payload(
                     "text": ":youtube:",
                     "emoji": true
                 },
-                "url": format!("https://www.youtube.com/watch?v={}", id)
+                "url": format!("https://www.youtube.com/watch?v={}", video.id)
             }
         ]
     }));
@@ -74,7 +74,7 @@ async fn get_token() -> &'static str {
 
 pub async fn post_message(body: &str) {
     if get_env().await == &Env::Dev {
-        tracing::warn!("because of running in dev mode, skipping slac::post_message()");
+        tracing::warn!("because of running in dev mode, skipping slack::post_message()");
         return;
     }
 
@@ -91,7 +91,6 @@ pub async fn post_message(body: &str) {
             .to_string(),
         )
         .header(CONTENT_TYPE, "application/json; charset=utf-8")
-        .header(ACCEPT_CHARSET, "utf-8")
         .send()
         .await
         .unwrap();
@@ -100,7 +99,7 @@ pub async fn post_message(body: &str) {
 
 pub async fn post_block_message(blocks: Vec<serde_json::Value>) {
     if get_env().await == &Env::Dev {
-        tracing::warn!("because of running in dev mode, skipping slac::post_message()");
+        tracing::warn!("because of running in dev mode, skipping slack::post_block_message()");
         return;
     }
 
@@ -117,7 +116,6 @@ pub async fn post_block_message(blocks: Vec<serde_json::Value>) {
             .to_string(),
         )
         .header(CONTENT_TYPE, "application/json; charset=utf-8")
-        .header(ACCEPT_CHARSET, "utf-8")
         .send()
         .await
         .unwrap();
@@ -126,7 +124,7 @@ pub async fn post_block_message(blocks: Vec<serde_json::Value>) {
 
 pub async fn view_open(trigger_id: &str) {
     if get_env().await == &Env::Dev {
-        tracing::warn!("because of running in dev mode, skipping slac::view_open()");
+        tracing::warn!("because of running in dev mode, skipping slack::view_open()");
         return;
     }
 
@@ -191,7 +189,6 @@ pub async fn view_open(trigger_id: &str) {
             .to_string(),
         )
         .header(CONTENT_TYPE, "application/json; charset=utf-8")
-        .header(ACCEPT_CHARSET, "utf-8")
         .send()
         .await
         .unwrap();
