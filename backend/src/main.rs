@@ -21,7 +21,7 @@ use url::Url;
 mod slack;
 mod state;
 
-use state::{Pointer, State, VideoRequest};
+use state::{PlayingStatus, State, VideoRequest};
 
 fn ws_chan(socket: WebSocket) -> (UnboundedSender<Message>, SplitStream<WebSocket>) {
     let (mut ws_sender, ws_receiver) = socket.split();
@@ -89,9 +89,9 @@ async fn command(
 
     // TODO: help
     match req.text.as_str() {
-        "next" => match state.read_pointer().await {
-            Pointer::Stopping => {}
-            Pointer::Playing(pointer) => {
+        "next" => match state.read_playing().await {
+            None => {}
+            Some(PlayingStatus { pointer, .. }) => {
                 let next_pointer = pointer + 1;
                 let queue = state.queue.read().await;
                 if queue.len() <= next_pointer {
@@ -101,9 +101,9 @@ async fn command(
                 }
             }
         },
-        "prev" => match state.read_pointer().await {
-            Pointer::Stopping => {}
-            Pointer::Playing(pointer) => {
+        "prev" => match state.read_playing().await {
+            None => {}
+            Some(PlayingStatus { pointer, .. }) => {
                 let next_pointer = pointer.saturating_sub(1);
                 let queue = state.queue.read().await;
                 if queue.len() <= next_pointer {
@@ -118,7 +118,7 @@ async fn command(
             state.stop().await;
         }
         "play" => {
-            if state.read_pointer().await != Pointer::Stopping {
+            if state.read_playing().await != None {
                 return StatusCode::OK;
             }
 
@@ -157,7 +157,7 @@ async fn interactive(
     );
     state.queue.write().await.push(vid_req.clone());
 
-    if state.read_pointer().await == Pointer::Stopping {
+    if state.read_playing().await == None {
         state.play(state.queue.read().await.len() - 1).await;
         state.broadcast().await;
     }
@@ -171,7 +171,7 @@ async fn request(
     tracing::info!("{:?}", req);
     state.queue.write().await.push(req);
 
-    if state.read_pointer().await == Pointer::Stopping {
+    if state.read_playing().await == None {
         state.play(state.queue.read().await.len() - 1).await;
         state.broadcast().await;
     }

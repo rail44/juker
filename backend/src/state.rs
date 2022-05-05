@@ -5,15 +5,14 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 
 // TODO: dump it for persistent
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct State {
-    pointer: RwLock<Pointer>,
-    pub begin: RwLock<i64>,
+    playing: RwLock<Option<PlayingStatus>>,
     pub queue: RwLock<Vec<VideoRequest>>,
     pub txs: RwLock<Vec<UnboundedSender<Message>>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct VideoRequest {
     author: String,
     id: String,
@@ -26,26 +25,17 @@ impl VideoRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(untagged)]
-pub enum Pointer {
-    Playing(usize),
-    Stopping,
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayingStatus {
+    pub pointer: usize,
+    begin_milli: i64,
 }
 
-impl Default for Pointer {
-    fn default() -> Self {
-        Self::Stopping
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
+impl PlayingStatus {
+    fn with_pointer(pointer: usize) -> Self {
         Self {
-            begin: RwLock::new(Utc::now().timestamp()),
-            pointer: Default::default(),
-            queue: Default::default(),
-            txs: Default::default(),
+            pointer,
+            begin_milli: Utc::now().timestamp_millis(),
         }
     }
 }
@@ -53,10 +43,23 @@ impl Default for State {
 impl State {
     pub async fn get_response(&self) -> StateResponse {
         StateResponse {
-            pointer: self.read_pointer().await,
-            queue: self.queue.read().await.clone(),
-            duration: Utc::now().timestamp() - *self.begin.read().await,
+            playing: match self.read_playing().await {
+                None => None,
+                Some(PlayingStatus {
+                    pointer,
+                    begin_milli,
+                }) => {
+                    let req = self.get_video_request(pointer).await;
+                    let duration_mill = Utc::now().timestamp_millis() - begin_milli;
+                    Some(PlayingResponse {
+                        id: req.id,
+                        duration: (duration_mill as f32) / 1000_f32,
+                        pointer,
+                    })
+                }
+            },
             listeners: self.txs.read().await.len(),
+            count: self.queue.read().await.len(),
         }
     }
 
@@ -75,9 +78,9 @@ impl State {
     }
 
     pub async fn feed(&self, next_pointer: usize) {
-        match self.read_pointer().await {
-            Pointer::Stopping => {}
-            Pointer::Playing(pointer) => {
+        match self.read_playing().await {
+            None => {}
+            Some(PlayingStatus { pointer, .. }) => {
                 if pointer == next_pointer {
                     return;
                 }
@@ -92,24 +95,24 @@ impl State {
         }
     }
 
-    pub async fn read_pointer(&self) -> Pointer {
-        self.pointer.read().await.clone()
+    pub async fn read_playing(&self) -> Option<PlayingStatus> {
+        self.playing.read().await.clone()
     }
 
-    async fn assign_pointer(&self, p: Pointer) {
-        *self.pointer.write().await = p;
+    async fn assign_playing(&self, p: Option<PlayingStatus>) {
+        *self.playing.write().await = p;
     }
 
     pub async fn stop(&self) {
-        self.assign_pointer(Pointer::Stopping).await;
+        self.assign_playing(None).await;
         self.broadcast().await;
         crate::slack::post_message("Playing completed").await;
     }
 
-    pub async fn play(&self, i: usize) {
-        self.assign_pointer(Pointer::Playing(i)).await;
-        *self.begin.write().await = Utc::now().timestamp();
-        let req = self.get_video_request(i).await;
+    pub async fn play(&self, pointer: usize) {
+        self.assign_playing(Some(PlayingStatus::with_pointer(pointer)))
+            .await;
+        let req = self.get_video_request(pointer).await;
         self.broadcast().await;
 
         crate::slack::post_message(&format!(
@@ -125,9 +128,17 @@ impl State {
 }
 
 #[derive(Serialize)]
+pub struct PlayingResponse {
+    id: String,
+    duration: f32,
+    pointer: usize,
+}
+
+#[derive(Serialize)]
 pub struct StateResponse {
-    pointer: Pointer,
-    queue: Vec<VideoRequest>,
-    duration: i64,
+    #[serde(flatten)]
+    playing: Option<PlayingResponse>,
+
     listeners: usize,
+    count: usize,
 }
