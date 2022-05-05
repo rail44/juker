@@ -87,8 +87,36 @@ async fn command(
 ) -> impl IntoResponse {
     tracing::info!("{:?}", req);
 
-    // TODO: help, next, prev
+    // TODO: help
     match req.text.as_str() {
+        "next" => match state.read_pointer().await {
+            Pointer::Stopping => {}
+            Pointer::Playing(pointer) => {
+                let next_pointer = pointer + 1;
+                let queue = state.queue.read().await;
+                if queue.len() <= next_pointer {
+                    state.stop().await;
+                } else {
+                    state.play(next_pointer).await;
+                }
+            }
+        },
+        "prev" => match state.read_pointer().await {
+            Pointer::Stopping => {}
+            Pointer::Playing(pointer) => {
+                let next_pointer = pointer.saturating_sub(1);
+                let queue = state.queue.read().await;
+                if queue.len() <= next_pointer {
+                    state.stop().await;
+                } else {
+                    state.play(next_pointer).await;
+                }
+            }
+        },
+        "clear" => {
+            state.queue.write().await.clear();
+            state.stop().await;
+        }
         "play" => {
             if state.read_pointer().await != Pointer::Stopping {
                 return StatusCode::OK;

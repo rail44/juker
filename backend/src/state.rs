@@ -53,7 +53,7 @@ impl Default for State {
 impl State {
     pub async fn get_response(&self) -> StateResponse {
         StateResponse {
-            pointer: self.pointer.read().await.clone(),
+            pointer: self.read_pointer().await,
             queue: self.queue.read().await.clone(),
             duration: Utc::now().timestamp() - *self.begin.read().await,
             listeners: self.txs.read().await.len(),
@@ -75,25 +75,19 @@ impl State {
     }
 
     pub async fn feed(&self, next_pointer: usize) {
-        let pointer = self.pointer.read().await.clone();
-        match pointer {
+        match self.read_pointer().await {
             Pointer::Stopping => {}
             Pointer::Playing(pointer) => {
                 if pointer == next_pointer {
                     return;
                 }
 
-                {
-                    let queue = self.queue.read().await;
-                    if queue.len() <= next_pointer {
-                        self.assign_pointer(Pointer::Stopping).await;
-                    } else {
-                        self.play(next_pointer).await;
-                    }
+                let queue = self.queue.read().await;
+                if queue.len() <= next_pointer {
+                    self.stop().await;
+                } else {
+                    self.play(next_pointer).await;
                 }
-
-                *self.begin.write().await = Utc::now().timestamp();
-                self.broadcast().await;
             }
         }
     }
@@ -106,20 +100,27 @@ impl State {
         *self.pointer.write().await = p;
     }
 
+    pub async fn stop(&self) {
+        self.assign_pointer(Pointer::Stopping).await;
+        self.broadcast().await;
+        crate::slack::post_message("Playing completed").await;
+    }
+
     pub async fn play(&self, i: usize) {
         self.assign_pointer(Pointer::Playing(i)).await;
         *self.begin.write().await = Utc::now().timestamp();
         let req = self.get_video_request(i).await;
+        self.broadcast().await;
 
         crate::slack::post_message(&format!(
-            "Now Playing id {}, requested by {}",
+            "Now playing {}, requested by {}",
             req.id, req.author
         ))
         .await;
         if let Some(like) = req.like {
             crate::slack::post_message(&format!("with recommended point \"{}\"", like)).await;
         }
-        crate::slack::post_message("Join https://rail44.github.io/juker/ to listen").await;
+        crate::slack::post_message("Join https://rail44.github.io/juker/ to watch").await;
     }
 }
 
