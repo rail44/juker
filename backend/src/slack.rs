@@ -1,11 +1,70 @@
 use crate::env::{get_env, Env};
-use reqwest::header::{CONTENT_TYPE, ACCEPT_CHARSET};
+use reqwest::header::{ACCEPT_CHARSET, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
 use tokio::sync::OnceCell;
 
 static SLACK_TOKEN: OnceCell<String> = OnceCell::const_new();
+
+pub fn req_info_payload(
+    title: &str,
+    id: &str,
+    user: &str,
+    like: Option<&str>,
+) -> Vec<serde_json::Value> {
+    let mut blocks = vec![
+        json!({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": format!(":tv: *{}*", title),
+            }
+        }),
+        json!({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": format!(":bust_in_silhouette: *{}*", user),
+            }
+        }),
+    ];
+
+    if let Some(like) = like {
+        blocks.push(json!({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": format!(":heart: *{}*", like),
+            }
+        }));
+    }
+
+    blocks.push(json!({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": ":eyes:",
+                    "emoji": true
+                },
+                "url": "https://rail44.github.io/juker"
+            },
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": ":youtube:",
+                    "emoji": true
+                },
+                "url": format!("https://www.youtube.com/watch?v={}", id)
+            }
+        ]
+    }));
+    blocks
+}
 
 async fn get_token() -> &'static str {
     SLACK_TOKEN
@@ -24,10 +83,39 @@ pub async fn post_message(body: &str) {
     let res = client
         .post("https://slack.com/api/chat.postMessage")
         .bearer_auth(token)
-        .body(json!({
-            "channel": "C03DXGTRP45",
-            "text": body,
-        }).to_string())
+        .body(
+            json!({
+                "channel": "C03DXGTRP45",
+                "text": body,
+            })
+            .to_string(),
+        )
+        .header(CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(ACCEPT_CHARSET, "utf-8")
+        .send()
+        .await
+        .unwrap();
+    tracing::info!("{}", res.text().await.unwrap());
+}
+
+pub async fn post_block_message(blocks: Vec<serde_json::Value>) {
+    if get_env().await == &Env::Dev {
+        tracing::warn!("because of running in dev mode, skipping slac::post_message()");
+        return;
+    }
+
+    let token = get_token().await;
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://slack.com/api/chat.postMessage")
+        .bearer_auth(token)
+        .body(
+            json!({
+                "channel": "C03DXGTRP45",
+                "blocks": blocks,
+            })
+            .to_string(),
+        )
         .header(CONTENT_TYPE, "application/json; charset=utf-8")
         .header(ACCEPT_CHARSET, "utf-8")
         .send()
@@ -95,10 +183,13 @@ pub async fn view_open(trigger_id: &str) {
     let res = client
         .post("https://slack.com/api/views.open")
         .bearer_auth(token)
-        .body(json!({
-            "trigger_id": trigger_id,
-            "view": view,
-        }).to_string())
+        .body(
+            json!({
+                "trigger_id": trigger_id,
+                "view": view,
+            })
+            .to_string(),
+        )
         .header(CONTENT_TYPE, "application/json; charset=utf-8")
         .header(ACCEPT_CHARSET, "utf-8")
         .send()
@@ -144,7 +235,14 @@ pub struct InteractiveViewPayload {
 }
 
 #[derive(Deserialize)]
-pub struct InteractivePayload {
+#[serde(untagged)]
+pub enum InteractivePayload {
+    Submission(SubmissionPayload),
+    Unknown(serde_json::Value),
+}
+
+#[derive(Deserialize)]
+pub struct SubmissionPayload {
     pub user: InteractiveUserPayload,
     pub view: InteractiveViewPayload,
 }

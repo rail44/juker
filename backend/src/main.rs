@@ -147,23 +147,26 @@ async fn interactive(
     tracing::info!("{}", req.payload);
 
     let payload: slack::InteractivePayload = serde_json::from_str(&req.payload).unwrap();
-    let url = Url::parse(&payload.view.state.values.url.input.value).unwrap();
-    let id = url
-        .query_pairs()
-        .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
-        .unwrap();
+    if let slack::InteractivePayload::Submission(payload) = payload {
+        let url = Url::parse(&payload.view.state.values.url.input.value).unwrap();
+        let id = url
+            .query_pairs()
+            .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
+            .unwrap();
 
-    let vid_req = VideoRequest::new(
-        payload.user.username,
-        id.to_string(),
-        payload.view.state.values.like.input.value,
-    );
-    state.queue.write().await.push(vid_req.clone());
+        let vid_req = VideoRequest::new(
+            payload.user.username,
+            id.to_string(),
+            payload.view.state.values.like.input.value,
+        );
+        state.queue.write().await.push(vid_req.clone());
 
-    if state.read_playing().await == None {
-        state.play(state.queue.read().await.len() - 1).await;
-        state.broadcast().await;
+        if state.read_playing().await == None {
+            state.play(state.queue.read().await.len() - 1).await;
+            state.broadcast().await;
+        }
     }
+
     StatusCode::OK
 }
 

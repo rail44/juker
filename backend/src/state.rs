@@ -106,7 +106,6 @@ impl State {
     pub async fn stop(&self) {
         self.assign_playing(None).await;
         self.broadcast().await;
-        crate::slack::post_message("Playing completed").await;
     }
 
     pub async fn play(&self, position: usize) {
@@ -115,9 +114,11 @@ impl State {
         let req = self.get_video_request(position).await;
         self.broadcast().await;
 
-        crate::slack::post_message(&format!(
-            "Now playing {}, requested by {}",
-            req.id, req.author
+        crate::slack::post_block_message(crate::slack::req_info_payload(
+            "dummy title",
+            &req.id,
+            &req.author,
+            req.like.as_deref(),
         ))
         .await;
         if let Some(like) = req.like {
