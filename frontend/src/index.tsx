@@ -1,7 +1,15 @@
 /* @refresh reload */
 import { render } from "solid-js/web";
 import type { Component } from "solid-js";
-import { createSignal, onMount, createEffect, Show, Suspense } from "solid-js";
+import {
+  createSignal,
+  onMount,
+  createEffect,
+  Show,
+  Suspense,
+  createMemo,
+  untrack,
+} from "solid-js";
 import { v4 as uuidv4 } from "uuid";
 
 import "./index.css";
@@ -20,13 +28,12 @@ function sendMessage(socket: WebSocket, message: SocketRequest) {
 }
 
 const Player: Component<{
-  videoId: string | null;
-  pointer: number | null;
+  playing: PlayingStatus;
   socket: WebSocket;
-  duration: number;
 }> = (props) => {
   // TODO: filter frequently prop changing
 
+  const position = createMemo(() => props.playing.position);
   const [ready, setReady] = createSignal(false);
   const uuid = uuidv4();
   let player: any;
@@ -34,7 +41,6 @@ const Player: Component<{
     player = new YT.Player(uuid, {
       height: "360",
       width: "640",
-      videoId: props.videoId,
       playerVars: {
         controls: 0,
         disablekb: 1,
@@ -46,17 +52,15 @@ const Player: Component<{
         onStateChange: (ev: any) => {
           console.log(ev.data);
           if (ev.data === 1) {
-            sendMessage(props.socket, { type: "ping" });
+            sendMessage(props.socket, {
+              type: "ping",
+            });
           }
 
           if (ev.data === 0) {
-            if (props.pointer === null) {
-              return;
-            }
-
             sendMessage(props.socket, {
               type: "feed",
-              pointer: props.pointer + 1,
+              position: props.playing.position + 1,
             });
           }
         },
@@ -69,11 +73,8 @@ const Player: Component<{
       return;
     }
 
-    if (props.pointer === null) {
-      return;
-    }
-
-    player.loadVideoById(props.videoId);
+    position();
+    player.loadVideoById(untrack(() => props.playing.id));
   });
 
   createEffect(() => {
@@ -81,11 +82,11 @@ const Player: Component<{
       return;
     }
 
-    if (Math.abs(player.getCurrentTime() - props.duration) <= 5) {
+    if (Math.abs(player.getCurrentTime() - props.playing.duration) <= 1) {
       return;
     }
 
-    player.seekTo(props.duration);
+    player.seekTo(props.playing.duration);
   });
 
   return <div id={uuid}></div>;
@@ -103,40 +104,37 @@ interface Ping {
 
 interface Feed {
   type: "feed";
-  pointer: number;
+  position: number;
+}
+
+interface PlayingStatus {
+  id: number;
+  position: number;
+  duration: number;
 }
 
 interface SocketResponse {
-  pointer: number | null;
-  duration: number;
-  queue: VideoRequest[];
+  playing: PlayingStatus | null;
   listeners: number;
+  count: number;
 }
 
 const App: Component<{ socket: WebSocket }> = (props) => {
-  const [initialized, setInitialized] = createSignal(false);
-  const [videoId, setVideoId] = createSignal<string | null>(null);
-  const [pointer, setPointer] = createSignal<number | null>(null);
-  const [duration, setDuration] = createSignal(0);
+  const [playingStatus, setPlayingStatus] = createSignal<PlayingStatus | null>(
+    null
+  );
   const [listeners, setListeners] = createSignal(0);
+  const [count, setCount] = createSignal(0);
 
   onMount(() => {
     props.socket.addEventListener("message", (event) => {
       console.log(event);
 
       const message: SocketResponse = JSON.parse(event.data);
-      setDuration(message.duration);
+
+      setPlayingStatus(message.playing);
       setListeners(message.listeners);
-
-      setPointer(message.pointer);
-      if (message.pointer === null) {
-        setVideoId(null);
-        return;
-      }
-
-      const req = message.queue[message.pointer];
-      setVideoId(req.id);
-      setInitialized(true);
+      setCount(message.count);
     });
 
     sendMessage(props.socket, { type: "ping" });
@@ -145,16 +143,17 @@ const App: Component<{ socket: WebSocket }> = (props) => {
   return (
     <div>
       <div>
-        <Show when={initialized()}>
-          <Player
-            videoId={videoId()}
-            duration={duration()}
-            socket={props.socket}
-            pointer={pointer()}
-          />
+        <Show when={playingStatus() !== null}>
+          <Player playing={playingStatus()!} socket={props.socket} />
         </Show>
       </div>
       <div>listeners: {listeners()}</div>
+      <Show when={playingStatus() === null}>
+        <div>queue count: {count()}</div>
+      </Show>
+      <Show when={playingStatus() !== null}>
+        <div>remains: {count() - playingStatus()!.position - 1}</div>
+      </Show>
     </div>
   );
 };

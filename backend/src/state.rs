@@ -27,14 +27,14 @@ impl VideoRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayingStatus {
-    pub pointer: usize,
+    pub position: usize,
     begin_milli: i64,
 }
 
 impl PlayingStatus {
-    fn with_pointer(pointer: usize) -> Self {
+    fn with_position(position: usize) -> Self {
         Self {
-            pointer,
+            position,
             begin_milli: Utc::now().timestamp_millis(),
         }
     }
@@ -46,15 +46,15 @@ impl State {
             playing: match self.read_playing().await {
                 None => None,
                 Some(PlayingStatus {
-                    pointer,
+                    position,
                     begin_milli,
                 }) => {
-                    let req = self.get_video_request(pointer).await;
+                    let req = self.get_video_request(position).await;
                     let duration_mill = Utc::now().timestamp_millis() - begin_milli;
                     Some(PlayingResponse {
                         id: req.id,
                         duration: (duration_mill as f32) / 1000_f32,
-                        pointer,
+                        position,
                     })
                 }
             },
@@ -77,19 +77,19 @@ impl State {
         self.queue.read().await[i].clone()
     }
 
-    pub async fn feed(&self, next_pointer: usize) {
+    pub async fn feed(&self, next_position: usize) {
         match self.read_playing().await {
             None => {}
-            Some(PlayingStatus { pointer, .. }) => {
-                if pointer == next_pointer {
+            Some(PlayingStatus { position, .. }) => {
+                if position == next_position {
                     return;
                 }
 
                 let queue = self.queue.read().await;
-                if queue.len() <= next_pointer {
+                if queue.len() <= next_position {
                     self.stop().await;
                 } else {
-                    self.play(next_pointer).await;
+                    self.play(next_position).await;
                 }
             }
         }
@@ -109,10 +109,10 @@ impl State {
         crate::slack::post_message("Playing completed").await;
     }
 
-    pub async fn play(&self, pointer: usize) {
-        self.assign_playing(Some(PlayingStatus::with_pointer(pointer)))
+    pub async fn play(&self, position: usize) {
+        self.assign_playing(Some(PlayingStatus::with_position(position)))
             .await;
-        let req = self.get_video_request(pointer).await;
+        let req = self.get_video_request(position).await;
         self.broadcast().await;
 
         crate::slack::post_message(&format!(
@@ -131,14 +131,12 @@ impl State {
 pub struct PlayingResponse {
     id: String,
     duration: f32,
-    pointer: usize,
+    position: usize,
 }
 
 #[derive(Serialize)]
 pub struct StateResponse {
-    #[serde(flatten)]
     playing: Option<PlayingResponse>,
-
     listeners: usize,
     count: usize,
 }

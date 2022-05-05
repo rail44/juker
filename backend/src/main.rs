@@ -18,6 +18,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use url::Url;
 
+mod env;
 mod slack;
 mod state;
 
@@ -45,13 +46,15 @@ enum SocketMessage {
     #[serde(rename = "ping")]
     Ping,
     #[serde(rename = "feed")]
-    Feed { pointer: usize },
+    Feed { position: usize },
 }
 
 #[tokio::main]
 async fn main() {
-    slack::post_message("launched").await;
     tracing_subscriber::fmt::init();
+
+    tracing::info!("{:?}", env::get_env().await);
+    slack::post_message("launched").await;
 
     let initial_state = State::default();
 
@@ -91,25 +94,25 @@ async fn command(
     match req.text.as_str() {
         "next" => match state.read_playing().await {
             None => {}
-            Some(PlayingStatus { pointer, .. }) => {
-                let next_pointer = pointer + 1;
+            Some(PlayingStatus { position, .. }) => {
+                let next_position = position + 1;
                 let queue = state.queue.read().await;
-                if queue.len() <= next_pointer {
+                if queue.len() <= next_position {
                     state.stop().await;
                 } else {
-                    state.play(next_pointer).await;
+                    state.play(next_position).await;
                 }
             }
         },
         "prev" => match state.read_playing().await {
             None => {}
-            Some(PlayingStatus { pointer, .. }) => {
-                let next_pointer = pointer.saturating_sub(1);
+            Some(PlayingStatus { position, .. }) => {
+                let next_position = position.saturating_sub(1);
                 let queue = state.queue.read().await;
-                if queue.len() <= next_pointer {
+                if queue.len() <= next_position {
                     state.stop().await;
                 } else {
-                    state.play(next_pointer).await;
+                    state.play(next_position).await;
                 }
             }
         },
@@ -209,8 +212,8 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
                         .unwrap();
                 }
                 SocketMessage::Feed {
-                    pointer: next_pointer,
-                } => state.feed(next_pointer).await,
+                    position: next_position,
+                } => state.feed(next_position).await,
             }
         };
     }
