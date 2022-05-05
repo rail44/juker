@@ -50,7 +50,6 @@ const Player: Component<{
           setReady(true);
         },
         onStateChange: (ev: any) => {
-          console.log(ev.data);
           if (ev.data === 1) {
             sendMessage(props.socket, {
               type: "ping",
@@ -128,8 +127,6 @@ const App: Component<{ socket: WebSocket }> = (props) => {
 
   onMount(() => {
     props.socket.addEventListener("message", (event) => {
-      console.log(event);
-
       const message: SocketResponse = JSON.parse(event.data);
 
       setPlayingStatus(message.playing);
