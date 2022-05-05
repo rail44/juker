@@ -119,12 +119,7 @@ impl State {
             &req.id,
             &req.author,
             req.like.as_deref(),
-        ))
-        .await;
-        if let Some(like) = req.like {
-            crate::slack::post_message(&format!("with recommended point \"{}\"", like)).await;
-        }
-        crate::slack::post_message("Join https://rail44.github.io/juker/ to watch").await;
+        )).await;
     }
 }
 
