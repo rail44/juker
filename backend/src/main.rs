@@ -162,12 +162,12 @@ async fn interactive(
         )
         .await
         {
-            state.queue.write().await.push(vid_req.clone());
+            state.queue.write().await.push(vid_req);
 
             if state.read_playing().await == None {
                 state.play(state.queue.read().await.len() - 1).await;
-                state.broadcast().await;
             }
+            state.broadcast().await;
         }
     }
 
@@ -190,8 +190,8 @@ async fn request(
 
         if state.read_playing().await == None {
             state.play(state.queue.read().await.len() - 1).await;
-            state.broadcast().await;
         }
+        state.broadcast().await;
     }
     StatusCode::OK
 }
