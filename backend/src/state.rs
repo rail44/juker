@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 
+// TODO: dump it for persistent
 #[derive(Debug)]
 pub struct State {
     pointer: RwLock<Pointer>,
@@ -48,6 +49,7 @@ impl Default for State {
         }
     }
 }
+
 impl State {
     pub async fn get_response(&self) -> StateResponse {
         StateResponse {

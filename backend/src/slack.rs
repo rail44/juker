@@ -2,9 +2,20 @@ use reqwest::header::ACCEPT_CHARSET;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
+use tokio::sync::OnceCell;
+
+static SLACK_TOKEN: OnceCell<String> = OnceCell::const_new();
+
+async fn get_token() -> &'static str {
+    SLACK_TOKEN
+        .get_or_init(|| async { env::var("SLACK_TOKEN").unwrap() })
+        .await
+}
+
+pub async fn _post_message(_body: String) {}
 
 pub async fn view_open(trigger_id: &str) {
-    let token = env::var("SLACK_TOKEN").unwrap();
+    let token = get_token().await;
     let view = json!({
         "type": "modal",
         "title": {
