@@ -70,6 +70,10 @@ impl State {
         }
     }
 
+    pub async fn get_video_request(&self, i: usize) -> VideoRequest {
+        self.queue.read().await[i].clone()
+    }
+
     pub async fn feed(&self, next_pointer: usize) {
         let pointer = self.pointer.read().await.clone();
         match pointer {
@@ -105,6 +109,17 @@ impl State {
     pub async fn play(&self, i: usize) {
         self.assign_pointer(Pointer::Playing(i)).await;
         *self.begin.write().await = Utc::now().timestamp();
+        let req = self.get_video_request(i).await;
+
+        crate::slack::post_message(&format!(
+            "Now Playing id {}, requested by {}",
+            req.id, req.author
+        ))
+        .await;
+        if let Some(like) = req.like {
+            crate::slack::post_message(&format!("with recommended point \"{}\"", like)).await;
+        }
+        crate::slack::post_message("Join https://rail44.github.io/juker/ to listen").await;
     }
 }
 

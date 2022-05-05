@@ -50,6 +50,7 @@ enum SocketMessage {
 
 #[tokio::main]
 async fn main() {
+    slack::post_message("launched").await;
     tracing_subscriber::fmt::init();
 
     let initial_state = State::default();

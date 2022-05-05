@@ -12,7 +12,22 @@ async fn get_token() -> &'static str {
         .await
 }
 
-pub async fn _post_message(_body: String) {}
+pub async fn post_message(body: &str) {
+    let token = get_token().await;
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://slack.com/api/chat.postMessage")
+        .bearer_auth(token)
+        .header(ACCEPT_CHARSET, "utf-8")
+        .json(&json!({
+            "channel": "C03DXGTRP45",
+            "text": body,
+        }))
+        .send()
+        .await
+        .unwrap();
+    tracing::info!("{}", res.text().await.unwrap());
+}
 
 pub async fn view_open(trigger_id: &str) {
     let token = get_token().await;
@@ -67,10 +82,9 @@ pub async fn view_open(trigger_id: &str) {
     let client = reqwest::Client::new();
     let res = client
         .post("https://slack.com/api/views.open")
-        .bearer_auth(token.clone())
+        .bearer_auth(token)
         .header(ACCEPT_CHARSET, "utf-8")
         .json(&json!({
-            "token": token,
             "trigger_id": trigger_id,
             "view": view,
         }))
