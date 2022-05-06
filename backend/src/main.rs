@@ -150,6 +150,7 @@ async fn interactive(
     let payload: slack::InteractivePayload = serde_json::from_str(&req.payload).unwrap();
     if let slack::InteractivePayload::Submission(payload) = payload {
         let url = Url::parse(&payload.view.state.values.url.input.value).unwrap();
+        // TODO: get timestamp and use it for default duration
         let id = url
             .query_pairs()
             .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
