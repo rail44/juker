@@ -42,7 +42,6 @@ const Player: Component<{
       height: "360",
       width: "640",
       playerVars: {
-        controls: 0,
         disablekb: 1,
       },
       events: {
