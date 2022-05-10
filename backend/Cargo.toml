@@ -17,3 +17,4 @@ chrono = "0.4.19"
 futures = "0.3.21"
 tokio-stream = "0.1.8"
 anyhow = "1.0.57"
+rand = { version = "0.8.5", features = ["small_rng"] }

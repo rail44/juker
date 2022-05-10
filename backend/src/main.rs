@@ -13,6 +13,7 @@ use futures::{
     stream::{SplitStream, StreamExt},
 };
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
@@ -68,6 +69,7 @@ async fn main() {
         .route("/interactive", post(interactive))
         .route("/request", post(request))
         .route("/socket", get(socket_upgrade))
+        .route("/shuffle", post(shuffle))
         .layer(Extension(Arc::new(initial_state)));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     axum::Server::bind(&addr)
@@ -137,6 +139,12 @@ async fn command(
             state.queue.write().await.clear();
             state.stop().await;
         }
+        "shuffle" => {
+            if let Err(e) = state.shuffle().await {
+                tracing::error!("{}", e);
+                (StatusCode::BAD_REQUEST, "failed to shuffle");
+            }
+        }
         "play" => {
             if state.read_playing().await != None {
                 return (StatusCode::BAD_REQUEST, "already playing");
@@ -148,9 +156,8 @@ async fn command(
         _ => {
             slack::view_open(&req.trigger_id).await;
         }
-    }
-
-    (StatusCode::OK, "nobody listening")
+    };
+    (StatusCode::OK, "")
 }
 
 async fn interactive(
@@ -168,23 +175,33 @@ async fn interactive(
             .find_map(|(k, v)| if k == "v" { Some(v) } else { None })
             .unwrap();
 
-        if let Some(vid_req) = VideoRequest::new(
+        match VideoRequest::new(
             payload.user.username,
             id.to_string(),
             payload.view.state.values.like.input.value,
         )
         .await
         {
-            state.queue.write().await.push(vid_req);
+            Ok(vid_req) => {
+                state.queue.write().await.push(vid_req);
 
-            if state.read_playing().await == None {
-                state.play(state.queue.read().await.len() - 1).await;
+                if state.read_playing().await == None {
+                    state.play(state.queue.read().await.len() - 1).await;
+                }
+                state.broadcast().await;
+                return (StatusCode::OK, Cow::Borrowed(""));
             }
-            state.broadcast().await;
+            Err(e) => {
+                tracing::error!("{}", e);
+                return (StatusCode::BAD_REQUEST, Cow::Owned(format!("{}", e)));
+            }
         }
-    }
+    };
 
-    StatusCode::OK
+    (
+        StatusCode::BAD_REQUEST,
+        Cow::Borrowed("unknown interactive payload"),
+    )
 }
 
 #[derive(Deserialize, Debug)]
@@ -198,15 +215,21 @@ async fn request(
     Json(req): Json<RequestRequest>,
     Extension(state): Extension<Arc<State>>,
 ) -> impl IntoResponse {
-    if let Some(vid_req) = VideoRequest::new(req.author, req.id, req.like).await {
-        state.queue.write().await.push(vid_req);
+    match VideoRequest::new(req.author, req.id, req.like).await {
+        Ok(vid_req) => {
+            state.queue.write().await.push(vid_req);
 
-        if state.read_playing().await == None {
-            state.play(state.queue.read().await.len() - 1).await;
+            if state.read_playing().await == None {
+                state.play(state.queue.read().await.len() - 1).await;
+            }
+            state.broadcast().await;
+            (StatusCode::OK, Cow::Borrowed(""))
         }
-        state.broadcast().await;
+        Err(e) => {
+            tracing::error!("{}", e);
+            (StatusCode::BAD_REQUEST, Cow::Owned(format!("{}", e)))
+        }
     }
-    StatusCode::OK
 }
 
 async fn state(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
@@ -256,4 +279,13 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
 
     state.txs.write().await.retain(|v| !sender.same_channel(v));
     state.broadcast().await;
+}
+
+async fn shuffle(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
+    if let Err(e) = state.shuffle().await {
+        tracing::error!("{}", e);
+        (StatusCode::BAD_REQUEST, "failed to shuffle");
+    }
+
+    (StatusCode::OK, Json(state.get_response().await))
 }
