@@ -95,7 +95,14 @@ async fn command(
     // TODO: help
     match req.text.as_str() {
         "next" => match state.read_playing().await {
-            None => {}
+            None => {
+                if state.queue.read().await.is_empty() {
+                    return (StatusCode::BAD_REQUEST, "queue is empty");
+                }
+
+                state.play(0).await;
+                state.broadcast().await;
+            }
             Some(PlayingStatus { position, .. }) => {
                 let next_position = position + 1;
                 let queue = state.queue.read().await;
@@ -107,7 +114,15 @@ async fn command(
             }
         },
         "prev" => match state.read_playing().await {
-            None => {}
+            None => {
+                let len = state.queue.read().await.len();
+                if len == 0 {
+                    return (StatusCode::BAD_REQUEST, "queue is empty");
+                }
+
+                state.play(len - 1).await;
+                state.broadcast().await;
+            }
             Some(PlayingStatus { position, .. }) => {
                 let next_position = position.saturating_sub(1);
                 let queue = state.queue.read().await;
@@ -124,11 +139,7 @@ async fn command(
         }
         "play" => {
             if state.read_playing().await != None {
-                return StatusCode::OK;
-            }
-
-            if state.txs.read().await.len() == 0 {
-                return StatusCode::OK;
+                return (StatusCode::BAD_REQUEST, "already playing");
             }
 
             state.play(0).await;
@@ -139,7 +150,7 @@ async fn command(
         }
     }
 
-    StatusCode::OK
+    (StatusCode::OK, "nobody listening")
 }
 
 async fn interactive(
