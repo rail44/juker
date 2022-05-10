@@ -1,3 +1,4 @@
+use anyhow::Result;
 use axum::{
     extract::ws,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
@@ -208,30 +209,38 @@ async fn socket_upgrade(
     ws.on_upgrade(|socket| socket_handler(socket, state))
 }
 
+async fn receive_message(
+    msg: Message,
+    state: &Arc<State>,
+    sender: &UnboundedSender<Message>,
+) -> Result<()> {
+    let body = msg.into_text()?;
+    tracing::info!("{}", body);
+
+    if let Ok(msg) = serde_json::from_str(&body) {
+        match msg {
+            SocketMessage::Ping => sender.send(ws::Message::Text(serde_json::to_string(
+                &state.get_response().await,
+            )?))?,
+            SocketMessage::Feed {
+                position: next_position,
+            } => state.feed(next_position).await,
+        }
+    };
+    Ok(())
+}
+
 async fn socket_handler(socket: WebSocket, state: Arc<State>) {
     let (sender, mut receiver) = ws_chan(socket);
     // TODO: hashmap with unique id
     state.txs.write().await.push(sender.clone());
     state.broadcast().await;
 
-    while let Some(msg) = receiver.next().await {
-        let body = msg.unwrap().into_text().unwrap();
-        tracing::info!("{}", body);
-
-        if let Ok(msg) = serde_json::from_str(&body) {
-            match msg {
-                SocketMessage::Ping => {
-                    sender
-                        .send(ws::Message::Text(
-                            serde_json::to_string(&state.get_response().await).unwrap(),
-                        ))
-                        .unwrap();
-                }
-                SocketMessage::Feed {
-                    position: next_position,
-                } => state.feed(next_position).await,
-            }
-        };
+    while let Some(Ok(msg)) = receiver.next().await {
+        if let Err(e) = receive_message(msg, &state, &sender).await {
+            tracing::error!("{}", e);
+            break;
+        }
     }
 
     state.txs.write().await.retain(|v| !sender.same_channel(v));
