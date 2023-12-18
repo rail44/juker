@@ -85,7 +85,7 @@ pub async fn post_message(body: &str) {
         .bearer_auth(token)
         .body(
             json!({
-                "channel": "C03DXGTRP45",
+                "channel": "C04RM9PN1S7",
                 "text": body,
             })
             .to_string(),
