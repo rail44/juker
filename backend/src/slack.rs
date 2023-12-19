@@ -85,7 +85,7 @@ pub async fn post_message(body: &str) {
         .bearer_auth(token)
         .body(
             json!({
-                "channel": "C04RM9PN1S7",
+                "channel": "C06BGQ0JFEU",
                 "text": body,
             })
             .to_string(),
@@ -110,7 +110,7 @@ pub async fn post_block_message(blocks: Vec<serde_json::Value>) {
         .bearer_auth(token)
         .body(
             json!({
-                "channel": "C03DXGTRP45",
+                "channel": "C06BGQ0JFEU",
                 "blocks": blocks,
             })
             .to_string(),
