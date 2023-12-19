@@ -50,7 +50,7 @@ pub fn req_info_payload(
                     "text": ":eyes:",
                     "emoji": true
                 },
-                "url": "https://rail44.github.io/juker"
+                "url": "https://juker.onrender.com/"
             },
             {
                 "type": "button",
