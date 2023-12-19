@@ -72,10 +72,8 @@ async fn main() {
         .route("/shuffle", post(shuffle))
         .layer(Extension(Arc::new(initial_state)));
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn status() -> &'static str {
@@ -89,8 +87,8 @@ struct CommandRequest {
 }
 
 async fn command(
-    req: Form<CommandRequest>,
     Extension(state): Extension<Arc<State>>,
+    req: Form<CommandRequest>,
 ) -> impl IntoResponse {
     tracing::info!("{:?}", req);
 
@@ -142,11 +140,11 @@ async fn command(
         "shuffle" => {
             if let Err(e) = state.shuffle().await {
                 tracing::error!("{}", e);
-                (StatusCode::BAD_REQUEST, "failed to shuffle");
+                return (StatusCode::BAD_REQUEST, "failed to shuffle");
             }
         }
         "play" => {
-            if state.read_playing().await != None {
+            if state.read_playing().await.is_some() {
                 return (StatusCode::BAD_REQUEST, "already playing");
             }
 
@@ -161,8 +159,8 @@ async fn command(
 }
 
 async fn interactive(
-    req: Form<slack::InteractiveRequest>,
     Extension(state): Extension<Arc<State>>,
+    req: Form<slack::InteractiveRequest>,
 ) -> impl IntoResponse {
     tracing::info!("{}", req.payload);
 
@@ -185,7 +183,7 @@ async fn interactive(
             Ok(vid_req) => {
                 state.queue.write().await.push(vid_req);
 
-                if state.read_playing().await == None {
+                if state.read_playing().await.is_none() {
                     state.play(state.queue.read().await.len() - 1).await;
                 }
                 state.broadcast().await;
@@ -212,14 +210,14 @@ struct RequestRequest {
 }
 
 async fn request(
-    Json(req): Json<RequestRequest>,
     Extension(state): Extension<Arc<State>>,
+    Json(req): Json<RequestRequest>,
 ) -> impl IntoResponse {
     match VideoRequest::new(req.author, req.id, req.like).await {
         Ok(vid_req) => {
             state.queue.write().await.push(vid_req);
 
-            if state.read_playing().await == None {
+            if state.read_playing().await.is_none() {
                 state.play(state.queue.read().await.len() - 1).await;
             }
             state.broadcast().await;
@@ -284,8 +282,11 @@ async fn socket_handler(socket: WebSocket, state: Arc<State>) {
 async fn shuffle(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
     if let Err(e) = state.shuffle().await {
         tracing::error!("{}", e);
-        (StatusCode::BAD_REQUEST, "failed to shuffle");
+        return (StatusCode::BAD_REQUEST, "failed to shuffle".into_response());
     }
 
-    (StatusCode::OK, Json(state.get_response().await))
+    (
+        StatusCode::OK,
+        Json(state.get_response().await).into_response(),
+    )
 }
